@@ -3,6 +3,7 @@ name: Build Xapp APK
 on:
   push:
     branches: [main]
+    paths-ignore: ['scripts/turn_check.py', '.github/workflows/turn-check.yml']
   workflow_dispatch:
 
 permissions:

@@ -1,0 +1,25 @@
+name: Relay server check
+
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/turn_check.py', '.github/workflows/turn-check.yml']
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install headless Chrome
+        run: pip install playwright==1.47.0 && python -m playwright install --with-deps chromium
+      - name: Check relay servers
+        env:
+          TU: ${{ secrets.XAPP_TURN_USER }}
+          TP: ${{ secrets.XAPP_TURN_PASS }}
+          MU: ${{ secrets.XAPP_METERED_USER }}
+          MP: ${{ secrets.XAPP_METERED_PASS }}
+        run: python scripts/turn_check.py
