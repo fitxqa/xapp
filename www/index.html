@@ -92,6 +92,30 @@ button.set:hover{background:var(--raise)}
 .switch{width:44px;height:26px;border-radius:13px;background:var(--line);position:relative;flex:none;transition:background .15s}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
 .switch.on{background:var(--orange)}.switch.on::after{transform:translateX(18px)}
+/* Settings: compact grouped cards */
+.sp{background:var(--bg);min-height:100%;padding:12px max(12px,env(safe-area-inset-right,0px)) 28px max(12px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:6px}
+.sg-h{font-size:11.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--mute);padding:12px 6px 4px}
+.sg{background:var(--panel);border-radius:16px;overflow:hidden;border:1px solid var(--line)}
+.sr{display:flex;align-items:center;gap:12px;width:100%;min-height:50px;padding:8px 14px;text-align:left;position:relative}
+button.sr:hover{background:var(--raise)}
+.sr+.sr::before{content:"";position:absolute;top:0;left:56px;right:0;border-top:1px solid var(--line)}
+.sr .bd{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none;background:rgba(255,106,19,.13);color:var(--orange)}
+.sr .bd svg.i{width:17px;height:17px}
+.sr .tx{flex:1;min-width:0}.sr .tx b{display:block;font-weight:500;font-size:15px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sr .tx small{display:block;color:var(--mute);font-size:12.5px;line-height:1.3;margin-top:1px}
+.sr .tx small.warn{color:var(--orange)}
+.sr .vl{font-size:13px;color:var(--mute);flex:none;display:flex;align-items:center;gap:6px}
+.sr .chev{color:var(--mute);opacity:.6;flex:none}.sr .chev svg.i{width:16px;height:16px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good)}.dot.off{background:var(--bad)}
+.sr.danger b{color:var(--bad)}.sr.danger .bd{background:rgba(255,77,77,.12);color:var(--bad)}
+.sw-row{display:flex;gap:6px;flex:none}
+.tsw{width:40px;height:40px;border-radius:50%;display:grid;place-items:center}
+.tsw span{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);box-shadow:0 0 0 2px transparent;transition:box-shadow .15s}
+.tsw[aria-checked="true"] span{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--orange)}
+.tsw .t-sys{background:linear-gradient(135deg,#ffffff 0 50%,#0b0b0c 50% 100%)}
+.tsw .t-light{background:#ffffff}.tsw .t-dark{background:#0b0b0c}
+.me2{display:flex;align-items:center;gap:14px;width:100%;padding:14px;text-align:left}
+.me2 b{display:block;font-size:17px;font-weight:600}.me2 small{display:block;color:var(--mute);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .me-card{display:flex;align-items:center;gap:16px;padding:18px;width:100%;text-align:left;border-bottom:1px solid var(--line)}
 .me-card b{font-size:19px;font-weight:600;display:block}.me-card small{color:var(--mute);font-size:14px}
 .badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--orange);color:var(--on-orange);font-size:11.5px;font-weight:700;display:inline-grid;place-items:center;letter-spacing:0;font-variant-numeric:tabular-nums}
@@ -329,7 +353,8 @@ const P = {
   check:"M20 6L9 17l-5-5", checks:"M17 6L6 17l-5-5M23 6L12 17l-1.5-1.5", out:"M7 17L17 7M8 7h9v9", inn:"M17 7L7 17M16 17H7V8",
   image:"M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21", users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   text:"M4 7V4h16v3M9 20h6M12 4v16", x:"M18 6L6 18M6 6l12 12", play:"M6 4l14 8-14 8V4z", pause:"M6 4h4v16H6zM14 4h4v16h-4z", trash:"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
-  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7",
+  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7", chev:"M9 18l6-6-6-6",
+  moon:"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z", battery:"M2 7h16v10H2zM22 11v2", rocket:"M5 19l3-3M14 4l6 6-8 8-6-6 8-8zM15 9h.01", logout:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", full:"M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
   updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   bell:"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0", wifi:"M5 12.6a11 11 0 0 1 14 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01M1.4 9a16 16 0 0 1 21.2 0",
@@ -737,40 +762,55 @@ function renderList(force){
   if(S.tab==="settings") renderSettings(L);
 }
 
+/* compact row: badge icon · title (+ short hint) · value / switch / chevron */
+function srow(act,icon,title,opt={}){
+  const right = opt.right!==undefined ? opt.right : `<span class="chev">${ico("chev")}</span>`;
+  return `<button class="sr${opt.danger?" danger":""}" data-set="${act}"><span class="bd">${ico(icon)}</span><span class="tx"><b>${title}</b>${opt.sub?`<small class="${opt.warn?"warn":""}">${opt.sub}</small>`:""}</span>${opt.val?`<span class="vl">${opt.val}</span>`:""}${right}</button>`;
+}
+function state(on){ return `<span class="vl"><span class="dot ${on?"":"off"}"></span>${on?"On":"Off"}</span>`; }
 function bgSection(){
-  const b=S.bg||{}, ok=v=>v?'<span class="in" style="font-weight:600">On</span>':'<span class="miss" style="font-weight:600">Off</span>';
-  const item=(act,icon,title,sub,right)=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b><small>${sub}</small></span>${right||""}</button>`;
+  const b=S.bg||{};
   const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false;
-  return `<div class="sec">Ring when Xapp is closed${S.bg?(allOk?" · ready":" · needs setup"):""}</div>
-    ${item("bgOn","phone","Background calls",b.signedIn?"Calls ring with the app closed":"Tap and enter your password once",ok(b.signedIn))}
-    ${item("bgNotif","bell","Notifications",b.notifications?"Allowed":"Tap to allow ringing notifications",ok(b.notifications))}
-    ${item("bgMic","mic","Microphone",b.microphone===false?"Tap → Permissions → Microphone → Allow":"Allowed",ok(b.microphone!==false))}
-    ${item("bgFull","phone","Full-screen incoming calls",b.fullScreenAllowed===false?"Tap and switch on, so calls fill the screen":"Calls fill the screen",ok(b.fullScreenAllowed!==false))}
-    ${item("bgBattery","settings","No battery restriction",b.batteryUnrestricted?"Xapp may run in the background":"Tap and choose Allow",ok(b.batteryUnrestricted))}
-    ${item("bgAuto","wifi","Auto-launch"+(b.manufacturer?" ("+esc(b.manufacturer)+")":""),"Honor, Huawei, Xiaomi, Oppo, Vivo: allow Xapp to auto-launch and run in background")}`;
+  const r=(act,icon,title,on,hint)=>srow(act,icon,title,{right:state(on), sub:on?"":hint, warn:!on});
+  return `<div class="sg-h">Ring when closed${S.bg?(allOk?" · ready":" · needs setup"):""}</div><div class="sg">
+    ${r("bgOn","phone","Background calls",!!b.signedIn,"Tap and enter your password")}
+    ${r("bgNotif","bell","Notifications",!!b.notifications,"Tap to allow")}
+    ${r("bgMic","mic","Microphone",b.microphone!==false,"Tap › Permissions › Allow")}
+    ${r("bgFull","full","Full-screen calls",b.fullScreenAllowed!==false,"Tap and switch on")}
+    ${r("bgBattery","battery","Battery unrestricted",!!b.batteryUnrestricted,"Tap and choose Allow")}
+    ${srow("bgAuto","rocket","Auto-launch",{val:b.manufacturer?esc(b.manufacturer):""})}
+  </div>`;
 }
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
-  const item=(act,icon,title,sub,right="")=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b>${sub?`<small>${sub}</small>`:""}</span>${right}</button>`;
-  L.innerHTML=`<button class="me-card" data-set="profile">${avatar(u,"lg")}<span style="min-width:0"><b>${esc(u.name)}</b><small>${esc(u.about||"Tap to add an about line")}</small><br><small>@${esc(u.username||"")}</small></span></button>
-    <div class="sec">Account</div>
-    ${item("profile","user","Profile","Name, photo, about")}
-    <div class="sec">Appearance</div>
-    <div class="set" style="cursor:default"><span class="si">${ico("updates")}</span><span class="st"><b>Theme</b><small>Light or dark background</small></span></div>
-    <div role="radiogroup" aria-label="Theme" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 18px 12px 54px">
-      ${[["system","System"],["light","Light"],["dark","Dark"]].map(([k,l])=>`<button class="set" role="radio" aria-checked="${PREFS.theme===k}" data-set="theme:${k}" style="justify-content:center;padding:10px 6px;border-radius:12px;border:1.5px solid ${PREFS.theme===k?"var(--orange)":"var(--line)"};color:${PREFS.theme===k?"var(--orange)":"var(--fg)"};font-weight:600">${l}</button>`).join("")}
+  const swatch=(k,l,c)=>`<button class="tsw" role="radio" aria-checked="${PREFS.theme===k}" aria-label="${l}" title="${l}" data-set="theme:${k}"><span class="${c}"></span></button>`;
+  const themeName={system:"System",light:"Light",dark:"Dark"}[PREFS.theme]||"System";
+  L.innerHTML=`<div class="sp">
+    <div class="sg"><button class="me2" data-set="profile">${avatar(u,"",false)}<span style="flex:1;min-width:0"><b>${esc(u.name)}</b><small>@${esc(u.username||"")}${u.about?" · "+esc(u.about):""}</small></span><span class="chev" style="color:var(--mute)">${ico("chev")}</span></button></div>
+
+    <div class="sg-h">Appearance</div><div class="sg">
+      <div class="sr"><span class="bd">${ico("moon")}</span><span class="tx"><b>Theme</b><small>${themeName}</small></span>
+        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
     </div>
-    <div class="sec">Calls</div>
-    ${item("speakerVoice","speaker","Voice calls on speaker","Start voice calls on the loudspeaker instead of the earpiece",sw("speakerVoice"))}
-    ${item("net","wifi","Test connection","Checks the relay server used for calls on 4G/5G")}
+
+    <div class="sg-h">Calls</div><div class="sg">
+      ${srow("speakerVoice","speaker","Voice calls on speaker",{right:sw("speakerVoice")})}
+      ${srow("net","wifi","Test connection")}
+    </div>
     ${isNative()&&!api.demo?bgSection():""}
-    <div class="sec">Notifications</div>
-    ${item("sounds","bell","Message sounds","Short tone when a message arrives",sw("sounds"))}
-    ${"Notification" in window?item("alerts","bell","Pop-up alerts","Show messages when Xapp is in the background"):""}
-    <div class="sec">About</div>
-    ${item("about","info","Xapp",`<span id="appVer">Version ${esc(APP_VERSION)}</span> · ${myContacts().length} contacts`)}
-    <div class="form" style="padding-top:8px"><button class="btn danger" data-set="logout">Sign out</button></div>`;
-  nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="Version "+i.version; } });
+
+    <div class="sg-h">Notifications</div><div class="sg">
+      ${srow("sounds","bell","Message sounds",{right:sw("sounds")})}
+      ${"Notification" in window&&!isNative()?srow("alerts","bell","Pop-up alerts"):""}
+    </div>
+
+    <div class="sg-h">About</div><div class="sg">
+      ${srow("about","info","Xapp",{val:`<span id="appVer">v${esc(APP_VERSION)}</span>`,right:""})}
+      ${srow("contactsTab","users","Contacts",{val:String(myContacts().length)})}
+      ${srow("logout","logout","Sign out",{danger:true,right:""})}
+    </div>
+  </div>`;
+  nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="v"+i.version; } });
 }
 const APP_VERSION="1.0";
 $("#list").onclick=e=>{
@@ -787,6 +827,7 @@ $("#list").onclick=e=>{
     if(a==="bgAuto") return nat("Background","openAutostart");
     if(a==="logout") return api.logout();
     if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
+    if(a==="contactsTab") return setTab("contacts");
     if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); if(a==="sounds") nat("Background","setMessageNotifications",{on:PREFS.sounds}); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
     return; }
   const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
