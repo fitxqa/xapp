@@ -398,26 +398,28 @@ function makeFire(){
     async startCall(peer, video, sess){
       const ref = C("calls").doc(); sess.id = ref.id;
       const pc = sess.pc, offC = ref.collection("offerCandidates"), ansC = ref.collection("answerCandidates");
-      const early = []; let ready = false;
-      pc.onicecandidate = e => { if(!e.candidate) return; const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
+      const early = []; let ready = false; const addC = queueIce(pc, sess);
+      pc.onicecandidate = e => { if(!e.candidate) return; sess.types.add(e.candidate.type); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
       await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now()});
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
-        if(d.answer && !pc.currentRemoteDescription){ pc.setRemoteDescription(new RTCSessionDescription(d.answer)).then(()=>sess.onActive()); }
+        if(d.answer && !pc.currentRemoteDescription && !sess.answering){ sess.answering=true;
+          pc.setRemoteDescription(new RTCSessionDescription(d.answer)).then(()=>{ addC.flush(); sess.onActive(); }).catch(()=>{ sess.answering=false; }); }
         if(["ended","declined","missed"].includes(d.status)) sess.close(d.status);
       }));
-      sess.unsubs.push(ansC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") pc.addIceCandidate(new RTCIceCandidate(c.doc.data())).catch(()=>{}); })));
+      sess.unsubs.push(ansC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
       sess.setStatus = st => ref.update(st).catch(()=>{});
     },
     async acceptCall(call, sess){
       const ref = C("calls").doc(call.id); sess.id = call.id;
       const pc = sess.pc, offC = ref.collection("offerCandidates"), ansC = ref.collection("answerCandidates");
-      pc.onicecandidate = e => e.candidate && ansC.add(e.candidate.toJSON());
-      await pc.setRemoteDescription(new RTCSessionDescription(call.offer));
+      const addC = queueIce(pc, sess);
+      pc.onicecandidate = e => { if(!e.candidate) return; sess.types.add(e.candidate.type); ansC.add(e.candidate.toJSON()); };
+      await pc.setRemoteDescription(new RTCSessionDescription(call.offer)); addC.flush();
       const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
       await ref.update({answer:{type:ans.type,sdp:ans.sdp}, status:"active", answeredAt:Date.now()});
-      sess.unsubs.push(offC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") pc.addIceCandidate(new RTCIceCandidate(c.doc.data())).catch(()=>{}); })));
+      sess.unsubs.push(offC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && d.status==="ended") sess.close("ended"); }));
       sess.setStatus = st => ref.update(st).catch(()=>{});
       sess.onActive();
@@ -499,6 +501,13 @@ function makeDemo(){
   };
 }
 
+/* Remote ICE candidates can arrive before the answer/offer is applied: hold them until it is. */
+function queueIce(pc, sess){
+  const pend = [];
+  const add = c => { if(pc.remoteDescription && pc.remoteDescription.type) pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}); else pend.push(c); };
+  add.flush = () => pend.splice(0).forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
+  return add;
+}
 function preview(m){
   if(!m) return "";
   return {image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] ? ({image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] + (m.text?" · "+m.text:"")) : (m.text||"");
@@ -817,7 +826,7 @@ function attachRemote(s){
   if(api.demo){ const rv=$("#rv"); if(rv&&s.local&&s.startedAt) rv.srcObject=s.local; }
 }
 function newSession(peer, video, outgoing){
-  const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
+  const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),types:new Set(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
   sess.speaker=!!video; sess.connected=api.demo;
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
@@ -834,13 +843,13 @@ async function prepare(sess){
   catch(e){ if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
   if(!sess.local){ toast("Allow microphone access to make calls"); return false; }
   if(!api.demo){
-    const pc=new RTCPeerConnection(ICE); sess.pc=pc;
+    const pc=new RTCPeerConnection({...ICE, iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
     pc.oniceconnectionstatechange=()=>{ const st=pc.iceConnectionState;
       if(st==="connected"||st==="completed"){ sess.connected=true; clearTimeout(sess.failT); attachRemote(sess); route(sess); }
       if(st==="disconnected"){ const p=$("#callSt"); if(p) p.textContent="Reconnecting…"; }
-      if(st==="failed"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Can't connect on this network";
+      if(st==="failed"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
         toast("The networks blocked the call. A relay (TURN) server is needed."); sess.failT=setTimeout(()=>sess.hangup(),3500); } };
   }
   return true;
