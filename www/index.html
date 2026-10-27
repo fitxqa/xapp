@@ -363,7 +363,12 @@ function makeFire(){
         let d = {};
         for(let i=0;i<3;i++){ try{ d = (await C("users").doc(me).get()).data(); }catch(e){} if(d) break; await new Promise(r=>setTimeout(r,800)); }
         d = d || {};
-        cb({uid:me, username:d.username||u.email.split("@")[0], name:d.name||u.email.split("@")[0], about:d.about||"", photo:d.photo||""});
+        const uname = d.username || u.email.split("@")[0];
+        if(!d.name || !d.username){   // repair an account whose profile did not save at sign-up
+          const fix = {uid:me, username:uname, name:d.name||uname}; if(!d.about) fix.about="Hey there! I am using Xapp";
+          C("users").doc(me).set(fix,{merge:true}).catch(()=>{}); d = {...fix, ...d, ...fix};
+        }
+        cb({uid:me, username:uname, name:d.name||uname, about:d.about||"", photo:d.photo||""});
       });
     },
     async login(u,p){ await auth.signInWithEmailAndPassword(mail(u),p); },
@@ -375,7 +380,7 @@ function makeFire(){
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
     saveDiag(k,d){ if(me) C("users").doc(me).set({[k]:d},{merge:true}).catch(()=>{}); },
-    watchUsers(cb){ return C("users").onSnapshot(s=>cb(s.docs.map(d=>({uid:d.id,...d.data()})))); },
+    watchUsers(cb){ return C("users").onSnapshot(s=>cb(s.docs.map(d=>{ const x={uid:d.id,...d.data()}; if(!x.name) x.name=x.username||"Xapp user"; return x; }))); },
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     watchMessages(cid, cb){ return C("chats").doc(cid).collection("messages").orderBy("at").limitToLast(300).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     async send(peer, m){
