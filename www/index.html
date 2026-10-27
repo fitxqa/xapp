@@ -234,7 +234,7 @@ button.set:hover{background:var(--raise)}
 <!-- LOGIN -->
 <section id="login" hidden>
   <form class="card" id="loginForm" autocomplete="on">
-    <div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span><small>Chat · Call · Updates</small></div>
+    <div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span><small>Chat · Call · Updates</small></div>
     <div style="height:14px"></div>
     <div class="demo" id="demoNote" hidden>Demo mode with sample contacts. Xapp goes live once its Firebase settings are added to config.js. Sign in with any username.</div>
     <input id="lgName" placeholder="Your name" hidden autocomplete="name">
@@ -251,7 +251,7 @@ button.set:hover{background:var(--raise)}
 <div class="shell" id="shell" hidden>
   <section class="pane" id="listPane">
     <header class="bar" style="position:relative">
-      <div class="grow"><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div></div>
+      <div class="grow"><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div></div>
       <button class="ibtn" id="btnCam" aria-label="New status photo"></button>
       <button class="ibtn" id="btnMenu" aria-label="Menu"></button>
       <div class="menu" id="menu" hidden>
@@ -277,7 +277,7 @@ button.set:hover{background:var(--raise)}
 
   <section class="pane" id="chatPane">
     <div class="nochat" id="nochat">
-      <div><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div><p>Pick a contact to chat or call.<br>Messages and calls stay private.</p></div>
+      <div><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div><p>Pick a contact to chat or call.<br>Messages and calls stay private.</p></div>
     </div>
     <header class="bar chat-head" id="chatHead" hidden></header>
     <div class="wall" id="wall" hidden></div>
@@ -1197,7 +1197,7 @@ function drawCall(state){
   const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
   el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
-    <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
+    <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
     <div class="ctrls">${state==="incoming"
       ? `<button class="end" id="kDec" aria-label="Decline">${endIco}</button><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button>`
       : `<button id="kSpk" aria-label="Speaker" class="${s.speaker?"on":""}">${ico("speaker")}</button>${s.video?`<button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button>`:""}
