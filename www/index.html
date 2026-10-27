@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b0b0c">
+<meta name="theme-color" content="#0b0b0c" id="themeColor">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
 <title>Xapp</title>
@@ -22,7 +22,8 @@
 @font-face{font-family:"Figtree";font-weight:700;font-display:swap;src:url(fonts/figtree-latin-700-normal.woff2) format("woff2")}
 /* Layout: black brand bar on top, list pane + chat pane (side by side on desktop, stacked screens on phone) */
 :root{
-  --head:#0b0b0c; --head-fg:#ffffff;
+  --head:#0b0b0c; --head-fg:#ffffff; --head-mute:#a8a29c; --head-line:#222224; --head-hover:rgba(255,255,255,.08);
+  --field:#18181a; --field-line:#2b2b2f; --field-fg:#ffffff; --note-bg:#1c120b; --note-line:#4a2a14; --note-fg:#ffbe94;
   --bg:#0f0f10; --panel:#151517; --raise:#1f1f22; --line:#2a2a2e;
   --fg:#f3f1ee; --mute:#9b968f; --orange:#ff6a13; --orange-2:#ff8a45; --on-orange:#140700;
   --out:#3b1e0b; --in:#1f1f22; --wall:#0c0c0d; --wall-dot:#19191b;
@@ -33,10 +34,19 @@
 }
 @media (prefers-color-scheme: light){
   :root:not([data-theme="dark"]){
+    --head:#ffffff; --head-fg:#0b0b0c; --head-mute:#5f5a54; --head-line:#e6e1da; --head-hover:rgba(0,0,0,.06);
     --bg:#f5f3f0; --panel:#ffffff; --raise:#efebe6; --line:#e4dfd8;
     --fg:#141414; --mute:#6d6862; --out:#ffe1cc; --in:#ffffff; --wall:#ece8e2; --wall-dot:#e2ddd5;
+    --field:#f3f0ec; --field-line:#e0dad2; --field-fg:#141414; --note-bg:#fff1e7; --note-line:#ffd2b3; --note-fg:#8a3a0c;
     color-scheme:light;
   }
+}
+:root[data-theme="light"]{
+    --head:#ffffff; --head-fg:#0b0b0c; --head-mute:#5f5a54; --head-line:#e6e1da; --head-hover:rgba(0,0,0,.06);
+    --bg:#f5f3f0; --panel:#ffffff; --raise:#efebe6; --line:#e4dfd8;
+    --fg:#141414; --mute:#6d6862; --out:#ffe1cc; --in:#ffffff; --wall:#ece8e2; --wall-dot:#e2ddd5;
+    --field:#f3f0ec; --field-line:#e0dad2; --field-fg:#141414; --note-bg:#fff1e7; --note-line:#ffd2b3; --note-fg:#8a3a0c;
+    color-scheme:light;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -49,7 +59,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .logo{font-family:var(--f-display);font-weight:800;font-size:28px;letter-spacing:-.3px;line-height:1;display:flex;align-items:center;gap:9px;color:var(--head-fg)}
 .logo .mark{width:1.15em;height:1.15em;flex:none}
 .logo b{font-weight:800}.logo i{font-style:normal;color:var(--orange)}
-.logo small{font-size:12px;font-weight:700;letter-spacing:2.5px;color:#bdb7b0;text-transform:uppercase}
+.logo small{font-size:12px;font-weight:700;letter-spacing:2.5px;color:var(--head-mute);text-transform:uppercase}
 
 /* shell */
 .shell{position:fixed;inset:0;display:grid;grid-template-columns:1fr;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:var(--bg)}
@@ -67,9 +77,10 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .bar{background:var(--head);color:var(--head-fg);display:flex;align-items:center;gap:10px;padding:12px max(14px,env(safe-area-inset-right,0px)) 12px max(14px,env(safe-area-inset-left,0px));min-height:60px}
 .bar .grow{flex:1;min-width:0}
 .ibtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:inherit}
-.ibtn:hover{background:rgba(255,255,255,.08)}
-.tabs{background:var(--head);display:flex;border-top:1px solid #222;padding:6px max(4px,env(safe-area-inset-right,0px)) 6px max(4px,env(safe-area-inset-left,0px))}
-.tabs button{flex:1;min-width:0;padding:4px 0 2px;font-weight:600;font-size:11.5px;color:#a29c95;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+.ibtn:hover{background:var(--head-hover)}
+.bar{border-bottom:1px solid var(--head-line)}
+.tabs{background:var(--head);display:flex;border-top:1px solid var(--head-line);padding:6px max(4px,env(safe-area-inset-right,0px)) 6px max(4px,env(safe-area-inset-left,0px))}
+.tabs button{flex:1;min-width:0;padding:4px 0 2px;font-weight:600;font-size:11.5px;color:var(--head-mute);display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
 .tabs .ti{width:52px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .15s}
 .tabs button[aria-selected="true"]{color:var(--orange)}
 .tabs button[aria-selected="true"] .ti{background:rgba(255,106,19,.16)}
@@ -118,7 +129,7 @@ button.set:hover{background:var(--raise)}
 /* chat */
 .chat-head .who{display:flex;align-items:center;gap:10px;min-width:0;flex:1;text-align:left}
 .chat-head .who b{display:block;font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chat-head .who small{display:block;color:#b9b3ab;font-size:12.5px}
+.chat-head .who small{display:block;color:var(--head-mute);font-size:12.5px}
 .wall{flex:1;overflow-y:auto;background-color:var(--wall);background-image:radial-gradient(var(--wall-dot) 1.2px,transparent 1.3px);background-size:22px 22px;padding:12px max(10px,env(safe-area-inset-right,0px)) 12px max(10px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:3px}
 .day{align-self:center;background:var(--raise);color:var(--mute);font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;margin:10px 0 6px}
 .msg{max-width:min(78%,520px);padding:6px 9px 6px 10px;border-radius:12px;background:var(--in);align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.12);position:relative;word-wrap:break-word;overflow-wrap:anywhere}
@@ -169,16 +180,16 @@ button.set:hover{background:var(--raise)}
 .err{color:var(--bad);font-size:13.5px;min-height:18px}
 
 /* login */
-#login{position:fixed;inset:0;z-index:60;background:var(--head);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px))}
+#login{position:fixed;inset:0;z-index:60;background:var(--head);color:var(--head-fg);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px))}
 #login .card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px}
 #login .logo{font-size:72px;justify-content:center;flex-direction:column;align-items:center;gap:14px}
 #login .logo .mark{width:1.5em;height:1.5em}
 #login .logo small{font-size:13px;letter-spacing:3px}
-#login .tag{text-align:center;color:#a39d96;margin:2px 0 18px;font-size:14px}
-#login input{background:#18181a;border:1px solid #2b2b2f;color:#fff;border-radius:12px;padding:14px;outline:0;width:100%}
+#login .tag{text-align:center;color:var(--head-mute);margin:2px 0 18px;font-size:14px}
+#login input{background:var(--field);border:1px solid var(--field-line);color:var(--field-fg);border-radius:12px;padding:14px;outline:0;width:100%}
 #login input:focus{border-color:var(--orange)}
 #login .swap{color:var(--orange-2);font-weight:600;font-size:14px;text-align:center;padding:6px}
-#login .demo{background:#1c120b;border:1px solid #4a2a14;color:#ffbe94;border-radius:12px;padding:10px 12px;font-size:13px}
+#login .demo{background:var(--note-bg);border:1px solid var(--note-line);color:var(--note-fg);border-radius:12px;padding:10px 12px;font-size:13px}
 
 /* status viewer + composer */
 .story{position:fixed;inset:0;z-index:70;background:#000;color:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -232,7 +243,7 @@ button.set:hover{background:var(--raise)}
     <div class="err" id="lgErr"></div>
     <button class="btn" type="submit" id="lgBtn">Sign in</button>
     <button class="swap" type="button" id="lgSwap">New here? Create account</button>
-    <button class="swap" type="button" id="lgForgot" style="color:#a39d96;font-weight:500">Forgot password?</button>
+    <button class="swap" type="button" id="lgForgot" style="color:var(--head-mute);font-weight:500">Forgot password?</button>
   </form>
 </section>
 
@@ -581,7 +592,17 @@ function preview(m){
 
 /* =========================  STATE  ========================= */
 const api = DEMO ? makeDemo() : makeFire();
-const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, ...p}; })();
+const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", ...p}; })();
+async function applyTheme(){
+  let dark;
+  if(PREFS.theme==="dark") dark=true;
+  else if(PREFS.theme==="light") dark=false;
+  else if(isNative()){ try{ const r=await nat("Background","isDark"); dark=!!(r&&r.dark); }catch(e){ dark=false; } }
+  else dark=!!(window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const m=document.getElementById("themeColor"); if(m) m.content = dark ? "#0b0b0c" : "#ffffff";
+  nat("Background","setBars",{dark});
+}
 function savePrefs(){ try{ localStorage.setItem("xappPrefs",JSON.stringify(PREFS)); }catch(e){} }
 const S = { me:null, users:{}, chats:[], statuses:[], calls:[], tab:"chats", peer:null, msgs:[], unsubMsgs:null, q:"", typing:null, seenStatus:new Set(), mediaCache:new Map(), lastUnread:{} };
 try{ JSON.parse(localStorage.getItem("xappSeen")||"[]").forEach(x=>S.seenStatus.add(x)); }catch(e){}
@@ -734,6 +755,11 @@ function renderSettings(L){
   L.innerHTML=`<button class="me-card" data-set="profile">${avatar(u,"lg")}<span style="min-width:0"><b>${esc(u.name)}</b><small>${esc(u.about||"Tap to add an about line")}</small><br><small>@${esc(u.username||"")}</small></span></button>
     <div class="sec">Account</div>
     ${item("profile","user","Profile","Name, photo, about")}
+    <div class="sec">Appearance</div>
+    <div class="set" style="cursor:default"><span class="si">${ico("updates")}</span><span class="st"><b>Theme</b><small>Light or dark background</small></span></div>
+    <div role="radiogroup" aria-label="Theme" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 18px 12px 54px">
+      ${[["system","System"],["light","Light"],["dark","Dark"]].map(([k,l])=>`<button class="set" role="radio" aria-checked="${PREFS.theme===k}" data-set="theme:${k}" style="justify-content:center;padding:10px 6px;border-radius:12px;border:1.5px solid ${PREFS.theme===k?"var(--orange)":"var(--line)"};color:${PREFS.theme===k?"var(--orange)":"var(--fg)"};font-weight:600">${l}</button>`).join("")}
+    </div>
     <div class="sec">Calls</div>
     ${item("speakerVoice","speaker","Voice calls on speaker","Start voice calls on the loudspeaker instead of the earpiece",sw("speakerVoice"))}
     ${item("net","wifi","Test connection","Checks the relay server used for calls on 4G/5G")}
@@ -750,6 +776,7 @@ const APP_VERSION="1.0";
 $("#list").onclick=e=>{
   if(e.target.closest("[data-add]")) return openAddContact();
   const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
+    if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme(); renderList(true); return; }
     if(a==="profile") return openProfile();
     if(a==="net") return netTest();
     if(a==="bgOn") return (S.bg&&S.bg.signedIn)?toast("Background calls are already on"):bgPasswordSheet();
@@ -795,7 +822,7 @@ function openAddContact(){
 }
 function openContacts(mode){
   const sh=$("#sheet"); const list=myContacts();
-  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${mode==="call"?"New call":"Select contact"}</b><div style="font-size:12.5px;color:#b9b3ab">${list.length} contacts</div></div></header>
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${mode==="call"?"New call":"Select contact"}</b><div style="font-size:12.5px;color:var(--head-mute)">${list.length} contacts</div></div></header>
     <label class="search"><span>${ico("search")}</span><input id="cq" placeholder="Search name" aria-label="Search name"></label>
     <div class="list" id="clist"></div>`;
   const draw=(q="")=>{ $("#clist").innerHTML = `<button class="row" data-addnew="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add contact</span></div><div class="sub"><span>By username or email</span></div></div></button>` + (list.filter(u=>(u.name||"").toLowerCase().includes(q)).map(u=>`<div class="row">
@@ -982,7 +1009,7 @@ async function netTest(){
     const t=Object.keys(r.types).filter(k=>k.startsWith("relay")); if(t.length) return "OK · "+t.join(", "); const e=r.errs[0]||"";
     return e.startsWith("401")?"Login rejected (401)":e.startsWith("701")?"Not reachable on this network (701)":e?("Failed · "+e):"No reply"; };
   const draw=done=>{ const relayOk=tests.slice(1).some(t=>res[t.key]&&res[t.key].ok);
-    sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Connection test</b><div style="font-size:12.5px;color:#b9b3ab">${navigator.onLine?"Online":"Offline"} · ${tests.length-1} relay routes</div></div></header>
+    sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Connection test</b><div style="font-size:12.5px;color:var(--head-mute)">${navigator.onLine?"Online":"Offline"} · ${tests.length-1} relay routes</div></div></header>
     <div class="list">${tests.map((t,i)=>`${i===1?'<div class="sec">Relay servers</div>':""}<div class="row" style="cursor:default">${icon(res[t.key]&&res[t.key].ok)}<div class="mid"><div class="top"><span class="name" style="font-size:14.5px">${esc(t.label)}</span></div><div class="sub"><span style="white-space:normal">${esc(why(res[t.key],t.key==="stun"))}</span></div></div></div>`).join("")}
     ${done?`<div class="empty" style="padding:18px 22px;text-align:left">${relayOk?"At least one relay works on this network, so calls can connect.":"No relay works on this network, so calls between different networks will fail."} Send a screenshot of this screen if calls still fail.</div>`:`<div class="empty">Testing… about 10 seconds</div>`}</div>`;
     sh.hidden=false; };
@@ -1059,10 +1086,13 @@ function applyCallAction(){
     else if(a.action==="decline"){ api.declineCall(a.id); call.close("declined"); }
   }
 }
+applyTheme();
+try{ window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>{ if(PREFS.theme==="system") applyTheme(); }); }catch(e){}
 if(isNative()){
+  natOn("Background","theme",()=>{ if(PREFS.theme==="system") applyTheme(); });
   natOn("Background","callAction",takeCallAction);
   natOn("Background","hangup",()=>{ if(call) call.hangup(); });
-  natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); });
+  natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); if(PREFS.theme==="system") applyTheme(); });
 }
 function route(s){ nat("AudioRoute","set",{active:true,speaker:!!s.speaker}); }
 function attachRemote(s){

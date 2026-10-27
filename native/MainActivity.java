@@ -31,6 +31,15 @@ public class MainActivity extends BridgeActivity {
     @Override public void onResume() { super.onResume(); inForeground = true; CallNotifications.cancelIncoming(this); }
     @Override public void onPause() { super.onPause(); inForeground = false; }
 
+    /** Phone switched between light and dark: tell the web app. */
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration cfg) {
+        super.onConfigurationChanged(cfg);
+        com.getcapacitor.JSObject o = new com.getcapacitor.JSObject();
+        o.put("dark", (cfg.uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
+        BackgroundPlugin.emit("theme", o);
+    }
+
     /** Opened from the ringing notification: show over the lock screen and hand the action to the web app. */
     private void handleCallIntent(Intent intent) {
         Uri data = intent != null ? intent.getData() : null;

@@ -115,6 +115,30 @@ public class BackgroundPlugin extends Plugin {
         call.resolve();
     }
 
+    /** Is the phone in dark mode? */
+    @PluginMethod
+    public void isDark(PluginCall call) {
+        int m = getContext().getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        JSObject r = new JSObject(); r.put("dark", m == android.content.res.Configuration.UI_MODE_NIGHT_YES); call.resolve(r);
+    }
+
+    /** Status bar and navigation bar match the app's theme. */
+    @PluginMethod
+    public void setBars(PluginCall call) {
+        final boolean dark = Boolean.TRUE.equals(call.getBoolean("dark", true));
+        final android.app.Activity a = getActivity();
+        if (a != null) a.runOnUiThread(() -> {
+            try {
+                android.view.Window w = a.getWindow();
+                int bg = dark ? 0xFF0B0B0C : 0xFFFFFFFF;
+                w.setStatusBarColor(bg); w.setNavigationBarColor(bg);
+                androidx.core.view.WindowInsetsControllerCompat c = androidx.core.view.WindowCompat.getInsetsController(w, w.getDecorView());
+                c.setAppearanceLightStatusBars(!dark); c.setAppearanceLightNavigationBars(!dark);
+            } catch (Exception ignored) {}
+        });
+        call.resolve();
+    }
+
     /** App info page (permissions: microphone, camera…). */
     @PluginMethod
     public void openAppInfo(PluginCall call) { openAppSettings(); call.resolve(); }
