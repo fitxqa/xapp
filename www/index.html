@@ -273,7 +273,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 const CFG = window.XAPP_CONFIG || {};
 const FIREBASE_CONFIG = CFG.firebase || {};
 const LOGIN_DOMAIN = "xapp.local";
-const ICE = { iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, ...(CFG.turn || [])] };
+const ICE = { iceServers: [{ urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] }, ...(CFG.turn || [])], iceTransportPolicy: CFG.relayOnly ? "relay" : "all" };
 const DEMO = !FIREBASE_CONFIG.apiKey || !window.firebase || /[?&]demo/.test(location.search);
 const MAX_VIDEO_MB = 16, CHUNK = 900000;
 
@@ -652,6 +652,7 @@ function openProfile(){
     <p class="note">Username: <b>@${esc(u.username||"")}</b> · colleagues find you by name.</p>
     <button class="btn" id="pSave">Save</button>
     <button class="btn ghost" id="pNotif">Turn on message alerts</button>
+    <button class="btn ghost" id="pNet">Test connection</button>
     
     <button class="btn danger" id="pOut">Sign out</button></div>`;
   sh.hidden=false;
@@ -660,6 +661,7 @@ function openProfile(){
   $("#pSave").onclick=async()=>{ await api.updateProfile({name:$("#pName").value.trim()||u.name, about:$("#pAbout").value.trim()}); S.me={...S.me,name:$("#pName").value.trim()||u.name,about:$("#pAbout").value.trim()}; toast("Profile saved"); sh.hidden=true; renderList(); };
   $("#pNotif").onclick=()=>{ if(!("Notification" in window)) return toast("This browser has no notifications"); Notification.requestPermission().then(p=>toast(p==="granted"?"Message alerts are on":"Alerts blocked in browser settings")); };
   $("#pOut").onclick=()=>api.logout();
+  $("#pNet").onclick=netTest;
 }
 $("#fAvatar").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
   const d=await shrinkImage(f,256,.8); await api.updateProfile({photo:d}); S.me.photo=d; toast("Photo updated"); if(!$("#sheet").hidden) openProfile(); renderList(); };
@@ -793,6 +795,35 @@ function openStory(uid){
     t=setTimeout(()=>{ i++; show(); },5000); };
   const close=()=>{ clearTimeout(t); st.hidden=true; st.style.background=""; renderList(); };
   st.hidden=false; show();
+}
+
+/* =========================  NETWORK TEST  ========================= */
+async function netTest(){
+  const sh=$("#sheet");
+  const line=(ok,t,sub="")=>`<div class="row" style="cursor:default"><span class="av sm" style="background:${ok===null?"var(--raise)":ok?"var(--good)":"var(--bad)"};font-size:15px">${ok===null?"…":ok?"✓":"✕"}</span><div class="mid"><div class="top"><span class="name" style="font-size:15px">${esc(t)}</span></div>${sub?`<div class="sub"><span style="white-space:normal">${esc(sub)}</span></div>`:""}</div></div>`;
+  const draw=(r,done)=>{ sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Connection test</b></div></header>
+    <div class="list">${line(r.host,"Phone network","Local Wi-Fi / mobile connection")}
+    ${line(r.srflx,"Internet address","Found through the public STUN server")}
+    ${line(r.relay,"Relay server (TURN)", r.relay?("Logged in · "+r.relayInfo):(r.err||(r.turns?"Checking "+r.turns+"…":"No relay server set in this build")))}
+    ${done?`<div class="empty" style="padding:20px 24px;text-align:left">${r.relay?"Calls can connect on any network, including 4G/5G.":r.turns?"Calls will only connect when both phones can reach each other directly. Send a screenshot of this screen.":"This build has no relay server."}</div>`:`<div class="empty">Testing… about 10 seconds</div>`}</div>`;
+    sh.hidden=false; };
+  const turnUrls=(CFG.turn||[]).flatMap(t=>[].concat(t.urls)).join(", ");
+  const r={host:null,srflx:null,relay:null,turns:turnUrls,err:"",relayInfo:""}; draw(r,false);
+  sh.onclick=e=>{ if(e.target.closest("[data-close]")) sh.hidden=true; };
+  let pc; try{ pc=new RTCPeerConnection({iceServers:ICE.iceServers}); }catch(e){ r.err="WebRTC not available: "+e.message; draw(r,true); return; }
+  pc.createDataChannel("t");
+  pc.onicecandidate=e=>{ const c=e.candidate; if(!c) return;
+    if(c.type==="host") r.host=true; if(c.type==="srflx") r.srflx=true;
+    if(c.type==="relay"){ r.relay=true; r.relayInfo=(c.relayProtocol||c.protocol||"")+" "+(c.address||""); }
+    draw(r,false); };
+  pc.onicecandidateerror=e=>{ if(!/turn/i.test(e.url||"")) return;
+    const why = e.errorCode===401 ? "Username or password rejected (401)" : e.errorCode===701 ? "Server not reachable from this network" : ("Error "+e.errorCode+" "+(e.errorText||""));
+    r.err = why+" · "+(e.url||""); draw(r,false); };
+  await pc.setLocalDescription(await pc.createOffer());
+  await new Promise(res=>{ const t=setTimeout(res,10000); pc.onicegatheringstatechange=()=>{ if(pc.iceGatheringState==="complete"){ clearTimeout(t); setTimeout(res,300); } }; });
+  pc.close(); if(r.host===null) r.host=false; if(r.srflx===null) r.srflx=false; if(r.relay===null) r.relay=false;
+  if(!r.relay && !r.err && turnUrls) r.err="No reply from the relay server";
+  draw(r,true);
 }
 
 /* =========================  CALLS  ========================= */
