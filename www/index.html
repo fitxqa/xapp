@@ -917,9 +917,12 @@ function newSession(peer, video, outgoing){
   const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),types:new Set(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
   sess.speaker=!!video || PREFS.speakerVoice; sess.connected=api.demo;
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
+    if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
+      clearInterval(sess.tick); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
+      toast("Call could not connect. Check Settings → Test connection."); setTimeout(()=>sess.hangup(),4000); },25000);
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
       if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent="Connecting…"; },1000); };
-  sess.close=(why)=>{ if(sess.closed) return; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.demoT);
+  sess.close=(why)=>{ if(sess.closed) return; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop()); if(sess.pc) sess.pc.close();
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
     setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; },why==="ended"?600:1400); call=null; };

@@ -30,17 +30,22 @@ jobs:
       - name: Build web app
         run: npm run build
 
-      - name: Relay (TURN) server from secrets
+      - name: Relay (TURN) servers from secrets
         env:
           TU: ${{ secrets.XAPP_TURN_USER }}
           TP: ${{ secrets.XAPP_TURN_PASS }}
+          MU: ${{ secrets.XAPP_METERED_USER }}
+          MP: ${{ secrets.XAPP_METERED_PASS }}
         run: |
-          if [ -n "$TU" ] && [ -n "$TP" ]; then
-            node -e 'const fs=require("fs");const s="free.expressturn.com:3478";fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.turn = "+JSON.stringify([{urls:["turn:"+s,"turn:"+s+"?transport=tcp"],username:process.env.TU,credential:process.env.TP}])+";\n");'
-            echo "Relay server added"
-          else
-            echo "::warning::XAPP_TURN_USER / XAPP_TURN_PASS secrets missing — calls on mobile data may not connect."
-          fi
+          node -e '
+            const fs=require("fs"), e=process.env, t=[];
+            if(e.MU&&e.MP){ const h="global.relay.metered.ca";   // ports 80/443 + TLS: gets through networks that block calling apps
+              t.push({urls:["turn:"+h+":80","turn:"+h+":80?transport=tcp","turn:"+h+":443","turns:"+h+":443?transport=tcp"],username:e.MU,credential:e.MP}); }
+            if(e.TU&&e.TP){ const s="free.expressturn.com:3478";
+              t.push({urls:["turn:"+s,"turn:"+s+"?transport=tcp"],username:e.TU,credential:e.TP}); }
+            if(t.length) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.turn = "+JSON.stringify(t)+";\n");
+            console.log("Relay servers added: "+t.length+(e.MU?" (Metered)":"")+(e.TU?" (ExpressTURN)":""));
+            if(!t.length) console.log("::warning::No relay secrets — calls on mobile data may not connect.");'
 
       - name: Create Android project + Xapp icon
         run: |
