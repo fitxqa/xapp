@@ -5,16 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0c">
 <link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
 <title>Xapp</title>
 <!-- Xapp: chats, voice/video calls, status updates. Its own Firebase project and accounts
      (settings in config.js). Nothing is shared with other apps. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap">
 <script src="config.js"></script>
 <script src="firebase-app-compat.js"></script>
 <script src="firebase-auth-compat.js"></script>
 <script src="firebase-firestore-compat.js"></script>
 <style>
+@font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"Barlow Condensed";font-weight:800;font-display:swap;src:url(fonts/barlow-condensed-latin-800-normal.woff2) format("woff2")}
+@font-face{font-family:"Figtree";font-weight:400;font-display:swap;src:url(fonts/figtree-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"Figtree";font-weight:500;font-display:swap;src:url(fonts/figtree-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"Figtree";font-weight:600;font-display:swap;src:url(fonts/figtree-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"Figtree";font-weight:700;font-display:swap;src:url(fonts/figtree-latin-700-normal.woff2) format("woff2")}
 /* Layout: black brand bar on top, list pane + chat pane (side by side on desktop, stacked screens on phone) */
 :root{
   --head:#0b0b0c; --head-fg:#ffffff;
@@ -41,7 +46,8 @@ input,textarea{font:inherit;color:var(--fg)}
 button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
 [hidden]{display:none!important}
 svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.logo{font-family:var(--f-display);font-weight:800;font-size:26px;letter-spacing:.5px;line-height:1;display:flex;align-items:baseline;gap:6px;color:var(--head-fg)}
+.logo{font-family:var(--f-display);font-weight:800;font-size:28px;letter-spacing:-.3px;line-height:1;display:flex;align-items:center;gap:9px;color:var(--head-fg)}
+.logo .mark{width:1.15em;height:1.15em;flex:none}
 .logo b{font-weight:800}.logo i{font-style:normal;color:var(--orange)}
 .logo small{font-size:12px;font-weight:700;letter-spacing:2.5px;color:#bdb7b0;text-transform:uppercase}
 
@@ -146,7 +152,8 @@ button.set:hover{background:var(--raise)}
 .attach button:nth-child(2) span{background:#2f2f33;color:#fff}
 .attach button:nth-child(3) span{background:#ffffff;color:#0b0b0c}
 .nochat{flex:1;display:grid;place-items:center;text-align:center;background:var(--wall);color:var(--mute);padding:30px}
-.nochat .logo{justify-content:center;font-size:54px;color:var(--fg);margin-bottom:10px}
+.nochat .logo{justify-content:center;flex-direction:column;font-size:60px;gap:14px;color:var(--fg);margin-bottom:14px}
+.nochat .logo .mark{width:1.6em;height:1.6em}
 
 /* overlays */
 .sheet{position:fixed;inset:0;z-index:40;background:var(--panel);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -164,7 +171,8 @@ button.set:hover{background:var(--raise)}
 /* login */
 #login{position:fixed;inset:0;z-index:60;background:var(--head);color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px))}
 #login .card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px}
-#login .logo{font-size:64px;justify-content:center;flex-direction:column;align-items:center;gap:4px}
+#login .logo{font-size:72px;justify-content:center;flex-direction:column;align-items:center;gap:14px}
+#login .logo .mark{width:1.5em;height:1.5em}
 #login .logo small{font-size:13px;letter-spacing:3px}
 #login .tag{text-align:center;color:#a39d96;margin:2px 0 18px;font-size:14px}
 #login input{background:#18181a;border:1px solid #2b2b2f;color:#fff;border-radius:12px;padding:14px;outline:0;width:100%}
@@ -215,15 +223,15 @@ button.set:hover{background:var(--raise)}
 <!-- LOGIN -->
 <section id="login" hidden>
   <form class="card" id="loginForm" autocomplete="on">
-    <div class="logo"><span><i>X</i><b>app</b></span></div>
-    <p class="tag">Chats · voice &amp; video calls · updates</p>
+    <div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span><small>Chat · Call · Updates</small></div>
+    <div style="height:14px"></div>
     <div class="demo" id="demoNote" hidden>Demo mode with sample contacts. Xapp goes live once its Firebase settings are added to config.js. Sign in with any username.</div>
     <input id="lgName" placeholder="Full name (e.g. Ahmed – Technician)" hidden autocomplete="name">
     <input id="lgUser" placeholder="Username" required autocomplete="username" autocapitalize="none">
     <input id="lgPass" type="password" placeholder="Password (min 6)" required minlength="6" autocomplete="current-password">
     <div class="err" id="lgErr"></div>
     <button class="btn" type="submit" id="lgBtn">Sign in</button>
-    <button class="swap" type="button" id="lgSwap">New employee? Create account</button>
+    <button class="swap" type="button" id="lgSwap">New here? Create account</button>
   </form>
 </section>
 
@@ -231,7 +239,7 @@ button.set:hover{background:var(--raise)}
 <div class="shell" id="shell" hidden>
   <section class="pane" id="listPane">
     <header class="bar" style="position:relative">
-      <div class="grow"><div class="logo"><span><i>X</i><b>app</b></span></div></div>
+      <div class="grow"><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div></div>
       <button class="ibtn" id="btnCam" aria-label="New status photo"></button>
       <button class="ibtn" id="btnMenu" aria-label="Menu"></button>
       <div class="menu" id="menu" hidden>
@@ -257,7 +265,7 @@ button.set:hover{background:var(--raise)}
 
   <section class="pane" id="chatPane">
     <div class="nochat" id="nochat">
-      <div><div class="logo"><span><i>X</i><b>app</b></span></div><p>Pick a contact to chat or call.<br>Messages and calls stay private.</p></div>
+      <div><div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span></div><p>Pick a contact to chat or call.<br>Messages and calls stay private.</p></div>
     </div>
     <header class="bar chat-head" id="chatHead" hidden></header>
     <div class="wall" id="wall" hidden></div>
@@ -556,7 +564,7 @@ $("#tiChats").innerHTML=ico("chat"); $("#tiUpd").innerHTML=ico("updates"); $("#t
 /* =========================  AUTH  ========================= */
 let signupMode=false;
 $("#demoNote").hidden=!DEMO;
-$("#lgSwap").onclick=()=>{ signupMode=!signupMode; $("#lgName").hidden=!signupMode; $("#lgBtn").textContent=signupMode?"Create account":"Sign in"; $("#lgSwap").textContent=signupMode?"Already have an account? Sign in":"New employee? Create account"; };
+$("#lgSwap").onclick=()=>{ signupMode=!signupMode; $("#lgName").hidden=!signupMode; $("#lgBtn").textContent=signupMode?"Create account":"Sign in"; $("#lgSwap").textContent=signupMode?"Already have an account? Sign in":"New here? Create account"; };
 $("#loginForm").onsubmit=async e=>{
   e.preventDefault(); $("#lgErr").textContent=""; $("#lgBtn").disabled=true;
   if("Notification" in window && Notification.permission==="default") Notification.requestPermission().catch(()=>{});
@@ -1073,7 +1081,7 @@ function drawCall(state){
   const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
   el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
-    <div class="info"><span class="enc">Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
+    <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
     <div class="ctrls">${state==="incoming"
       ? `<button class="end" id="kDec" aria-label="Decline">${endIco}</button><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button>`
       : `<button id="kSpk" aria-label="Speaker" class="${s.speaker?"on":""}">${ico("speaker")}</button>${s.video?`<button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button>`:""}
