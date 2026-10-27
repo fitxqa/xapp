@@ -150,6 +150,13 @@ button.sr:hover{background:var(--raise)}
 .empty{padding:40px 28px;text-align:center;color:var(--mute)}
 .callbtn{color:var(--orange);width:40px;height:40px;display:grid;place-items:center;border-radius:50%}
 .callbtn:hover{background:var(--raise)}
+.clearbtn{color:var(--orange);font-weight:600;font-size:13.5px;padding:8px 10px;border-radius:10px}
+.clearbtn:hover{background:var(--raise)}
+.acts{display:flex;flex-direction:column;padding:6px 0}
+.acts button{display:flex;align-items:center;gap:14px;padding:14px 20px;text-align:left;font-size:15.5px}
+.acts button:hover{background:var(--raise)}
+.acts button svg.i{color:var(--mute)}
+.acts .del,.acts .del svg.i{color:var(--bad)}
 .in{color:var(--good)}.miss{color:var(--bad)}
 
 /* chat */
@@ -522,7 +529,10 @@ function makeFire(){
       sess.setStatus = st => ref.update(st).catch(()=>{});
       sess.onActive();
     },
-    declineCall(id){ return C("calls").doc(id).update({status:"declined"}).catch(()=>{}); }
+    declineCall(id){ return C("calls").doc(id).update({status:"declined"}).catch(()=>{}); },
+    async hideCalls(ids){   // removes calls from MY history only; the other person keeps theirs
+      for(let i=0;i<ids.length;i+=400){ const b=db.batch(); ids.slice(i,i+400).forEach(id=>b.update(C("calls").doc(id),{hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)})); await b.commit(); }
+    }
   };
 }
 
@@ -600,6 +610,7 @@ function makeDemo(){
       sess.demoT=setTimeout(()=>{ rec.status="active"; rec.answeredAt=Date.now(); sess.onActive(); },2600); },
     async acceptCall(call,sess){ const rec={...call,status:"active",answeredAt:Date.now()}; D.calls.push(rec); sess.id=rec.id; sess.setStatus=st=>{ Object.assign(rec,st); emit("calls",D.calls); }; sess.onActive(); },
     declineCall(id){ D.calls.push({id,caller:"ahmed",callee:me,status:"declined",createdAt:Date.now()}); emit("calls",D.calls); },
+    async hideCalls(ids){ D.calls.forEach(c=>{ if(ids.includes(c.id)) c.hiddenFor=[...(c.hiddenFor||[]),me]; }); emit("calls",D.calls); },
     onTyping(cb){ return on("typing",cb,()=>null); }
   };
 }
@@ -701,6 +712,7 @@ $("#menu").onclick=e=>{ const a=e.target.dataset.act; if(!a) return;
 $("#btnCam").onclick=()=>$("#fStatus").click();
 $("#fab").onclick=()=>{ if(S.tab==="chats") openContacts("chat"); else if(S.tab==="calls") openContacts("call"); else openStatusText(); };
 
+function myCalls(){ return S.calls.filter(c=>!(c.hiddenFor||[]).includes(S.me.uid) && (c.status!=="ringing"||Date.now()-c.createdAt>60000)); }
 function renderList(force){
   if(!S.me) return;
   const L=$("#list"), q=S.q;
@@ -710,7 +722,7 @@ function renderList(force){
   document.querySelector(".search").hidden = S.tab==="settings";
   const totalUnread=S.chats.reduce((a,c)=>a+(c["unread_"+S.me.uid]?1:0),0);
   $("#unreadAll").hidden=!totalUnread; $("#unreadAll").textContent=totalUnread;
-  const missed=S.calls.filter(c=>c.callee===S.me.uid && !c.answeredAt && c.status!=="ringing" && c.createdAt>Date.now()-864e5).length;
+  const missed=myCalls().filter(c=>c.callee===S.me.uid && !c.answeredAt && c.status!=="ringing" && c.createdAt>Date.now()-864e5).length;
   $("#missedAll").hidden=!missed; $("#missedAll").textContent=missed;
   $("#fab").innerHTML = S.tab==="chats"?ico("chat"):S.tab==="calls"?ico("phone"):ico("text");
   $("#fab").setAttribute("aria-label", S.tab==="chats"?"New chat":S.tab==="calls"?"New call":"Text status");
@@ -740,15 +752,17 @@ function renderList(force){
       ${!groups.length?`<div class="empty">Updates disappear after 24 hours.<br>Share a photo or a few words with your contacts.</div>`:""}`;
   }
   if(S.tab==="calls"){
-    const rows=S.calls.filter(c=>c.status!=="ringing"||Date.now()-c.createdAt>60000).slice(0,80).map(c=>{
+    const all=myCalls();
+    const rows=all.slice(0,100).map(c=>{
       const out=c.caller===S.me.uid, pid=out?c.callee:c.caller, u=S.users[pid]||{uid:pid,name:"Contact"};
       if(q&&!(u.name||"").toLowerCase().includes(q)) return "";
       const missedC=!out&&!c.answeredAt, len=c.answeredAt&&c.endedAt?" · "+dur((c.endedAt-c.answeredAt)/1000):"";
       const lab=out?(c.answeredAt?"Outgoing":"No answer"):(missedC?"Missed":"Incoming");
-      return `<div class="row">${avatar(u)}<div class="mid" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div class="top"><span class="name ${missedC?"miss":""}">${esc(u.name)}</span></div>
+      return `<div class="row" data-callrow="${esc(c.id)}" role="button" tabindex="0" style="cursor:pointer">${avatar(u)}<div class="mid" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div class="top"><span class="name ${missedC?"miss":""}">${esc(u.name)}</span></div>
         <div class="sub"><span><span class="${out?"in":missedC?"miss":"in"}">${ico(out?"out":"inn")}</span>${lab} · ${listTime(c.createdAt)}${len}</span></div></div>
         <button class="callbtn" data-call="${esc(pid)}" data-video="${c.video?1:0}" aria-label="Call back">${ico(c.video?"video":"phone")}</button></div></div>`; }).join("");
-    L.innerHTML = rows || `<div class="empty">No calls yet.<br>Voice and HD video calls to any contact.</div>`;
+    const head = all.length ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px 2px"><span class="sec" style="padding:0">Recent · ${all.length}</span><button class="clearbtn" data-clearcalls="1">Clear all</button></div>` : "";
+    L.innerHTML = head + (rows || `<div class="empty">No calls yet.<br>Voice and HD video calls to any contact.</div>`);
   }
   if(S.tab==="contacts"){
     const all=myContacts();
@@ -834,8 +848,44 @@ $("#list").onclick=e=>{
     return; }
   const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
   const c=e.target.closest("[data-call]"); if(c) return startCall(c.dataset.call, c.dataset.video==="1");
+  if(e.target.closest("[data-clearcalls]")) return confirmClearCalls();
+  const cr=e.target.closest("[data-callrow]"); if(cr) return callActions(cr.dataset.callrow);
   const s=e.target.closest("[data-story]"); if(s){ if(s.dataset.mystatus && !s.dataset.story) return chooseStatus(); return openStory(s.dataset.story); }
 };
+
+/* =========================  CALL HISTORY  ========================= */
+function callActions(id){
+  const c=S.calls.find(x=>x.id===id); if(!c) return;
+  const out=c.caller===S.me.uid, pid=out?c.callee:c.caller, u=S.users[pid]||{uid:pid,name:"Contact"};
+  const when=new Date(c.createdAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+  const len=c.answeredAt&&c.endedAt?" · "+dur((c.endedAt-c.answeredAt)/1000):"";
+  const sh=$("#sheet");
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Call info</b></div></header>
+    <div class="row" style="cursor:default">${avatar(u)}<div class="mid" style="border:0"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>${c.video?"Video":"Voice"} · ${out?"Outgoing":(c.answeredAt?"Incoming":"Missed")} · ${esc(when)}${len}</span></div></div></div>
+    <div class="acts">
+      <button data-a="voice">${ico("phone")}Voice call</button>
+      <button data-a="video">${ico("video")}Video call</button>
+      <button data-a="chat">${ico("chat")}Message</button>
+      <button data-a="del" class="del">${ico("trash")}Delete from call history</button>
+    </div>`;
+  sh.hidden=false;
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
+    const b=e.target.closest("[data-a]"); if(!b) return; const a=b.dataset.a; sh.hidden=true;
+    if(a==="voice") return startCall(pid,false);
+    if(a==="video") return startCall(pid,true);
+    if(a==="chat") return openChat(pid);
+    if(a==="del"){ try{ await api.hideCalls([id]); toast("Call deleted"); }catch(err){ toast("Could not delete. Check your connection."); } } };
+}
+function confirmClearCalls(){
+  const ids=myCalls().map(c=>c.id); if(!ids.length) return;
+  const sh=$("#sheet");
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Clear call history</b></div></header>
+    <div class="form"><p style="margin:0;line-height:1.5">Delete all ${ids.length} calls from your call history? This only clears your list. The other people keep theirs.</p>
+    <button class="btn danger" id="ccYes" style="background:var(--bad);color:#fff;border:0">Clear all</button>
+    <button class="btn ghost" data-close>Cancel</button></div>`;
+  sh.hidden=false; sh.onclick=e=>{ if(e.target.closest("[data-close]")) sh.hidden=true; };
+  $("#ccYes").onclick=async()=>{ sh.hidden=true; try{ await api.hideCalls(ids); toast("Call history cleared"); }catch(err){ toast("Could not clear. Check your connection."); } };
+}
 
 /* =========================  CONTACTS  ========================= */
 /* Public app: you only see people you added, plus anyone you have chatted or called with */
