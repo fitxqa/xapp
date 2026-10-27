@@ -52,7 +52,7 @@ jobs:
         run: |
           npx cap add android
           npx -y @capacitor/assets@3.0.5 generate --android \
-            --iconBackgroundColor '#ff6a13' --iconBackgroundColorDark '#ff6a13' \
+            --iconBackgroundColor '#0b0b0c' --iconBackgroundColorDark '#0b0b0c' \
             --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#0b0b0c'
           cp native/*.java android/app/src/main/java/qa/fitx/xapp/
 
