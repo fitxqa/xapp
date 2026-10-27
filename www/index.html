@@ -374,6 +374,7 @@ function makeFire(){
     logout(){ return auth.signOut(); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
+    saveDiag(k,d){ if(me) C("users").doc(me).set({[k]:d},{merge:true}).catch(()=>{}); },
     watchUsers(cb){ return C("users").onSnapshot(s=>cb(s.docs.map(d=>({uid:d.id,...d.data()})))); },
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     watchMessages(cid, cb){ return C("chats").doc(cid).collection("messages").orderBy("at").limitToLast(300).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
@@ -418,13 +419,13 @@ function makeFire(){
       const ref = C("calls").doc(); sess.id = ref.id;
       const pc = sess.pc, offC = ref.collection("offerCandidates"), ansC = ref.collection("answerCandidates");
       const early = []; let ready = false; const addC = queueIce(pc, sess);
-      pc.onicecandidate = e => { if(!e.candidate) return; sess.types.add(e.candidate.type); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
+      pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
       const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
       await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now()});
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
         if(d.answer && !pc.currentRemoteDescription && !sess.answering){ sess.answering=true;
-          pc.setRemoteDescription(new RTCSessionDescription(d.answer)).then(()=>{ addC.flush(); sess.onActive(); }).catch(()=>{ sess.answering=false; }); }
+          sess.log("answer-received"); pc.setRemoteDescription(new RTCSessionDescription(d.answer)).then(()=>{ addC.flush(); sess.onActive(); }).catch(e=>{ sess.log("srd-err "+(e&&e.message)); sess.answering=false; }); }
         if(["ended","declined","missed"].includes(d.status)) sess.close(d.status);
       }));
       sess.unsubs.push(ansC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
@@ -434,7 +435,7 @@ function makeFire(){
       const ref = C("calls").doc(call.id); sess.id = call.id;
       const pc = sess.pc, offC = ref.collection("offerCandidates"), ansC = ref.collection("answerCandidates");
       const addC = queueIce(pc, sess);
-      pc.onicecandidate = e => { if(!e.candidate) return; sess.types.add(e.candidate.type); ansC.add(e.candidate.toJSON()); };
+      pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); ansC.add(e.candidate.toJSON()); };
       await pc.setRemoteDescription(new RTCSessionDescription(call.offer)); addC.flush();
       const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
       await ref.update({answer:{type:ans.type,sdp:ans.sdp}, status:"active", answeredAt:Date.now()});
@@ -494,7 +495,7 @@ function makeDemo(){
       try{ localStorage.setItem("xappDemoMe",JSON.stringify(s)); }catch(e){} me="me"; seed(); D.users.unshift(s); this._cb(s); },
     signup(u,p,name){ return this.login(u,p,name); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
-    ping(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
+    ping(){}, saveDiag(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -523,8 +524,9 @@ function makeDemo(){
 /* Remote ICE candidates can arrive before the answer/offer is applied: hold them until it is. */
 function queueIce(pc, sess){
   const pend = [];
-  const add = c => { if(pc.remoteDescription && pc.remoteDescription.type) pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}); else pend.push(c); };
-  add.flush = () => pend.splice(0).forEach(c => pc.addIceCandidate(new RTCIceCandidate(c)).catch(()=>{}));
+  const put = c => { sess.logRemote(c); pc.addIceCandidate(new RTCIceCandidate(c)).catch(e=>sess.log("addIce-err "+(e&&e.name))); };
+  const add = c => { if(pc.remoteDescription && pc.remoteDescription.type) put(c); else pend.push(c); };
+  add.flush = () => { if(pend.length) sess.log("flush "+pend.length); pend.splice(0).forEach(put); };
   return add;
 }
 function preview(m){
@@ -855,32 +857,41 @@ function openStory(uid){
 }
 
 /* =========================  NETWORK TEST  ========================= */
+function gatherWith(cfg, ms){
+  return new Promise(async res=>{
+    const out={types:{}, errs:[]}; let pc;
+    try{ pc=new RTCPeerConnection(cfg); }catch(e){ out.errs.push("webrtc "+e.message); return res(out); }
+    pc.createDataChannel("t");
+    pc.onicecandidate=e=>{ const c=e.candidate; if(!c) return; const k=c.type+(c.relayProtocol?"/"+c.relayProtocol:""); out.types[k]=(out.types[k]||0)+1; };
+    pc.onicecandidateerror=e=>{ out.errs.push(e.errorCode+(e.errorText?" "+e.errorText:"")); };
+    const done=()=>{ try{ pc.close(); }catch(e){} res(out); };
+    const t=setTimeout(done,ms); pc.onicegatheringstatechange=()=>{ if(pc.iceGatheringState==="complete"){ clearTimeout(t); setTimeout(done,200); } };
+    try{ await pc.setLocalDescription(await pc.createOffer()); }catch(e){ out.errs.push("offer "+e.message); clearTimeout(t); done(); }
+  });
+}
 async function netTest(){
   const sh=$("#sheet");
-  const line=(ok,t,sub="")=>`<div class="row" style="cursor:default"><span class="av sm" style="background:${ok===null?"var(--raise)":ok?"var(--good)":"var(--bad)"};font-size:15px">${ok===null?"…":ok?"✓":"✕"}</span><div class="mid"><div class="top"><span class="name" style="font-size:15px">${esc(t)}</span></div>${sub?`<div class="sub"><span style="white-space:normal">${esc(sub)}</span></div>`:""}</div></div>`;
-  const draw=(r,done)=>{ sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Connection test</b></div></header>
-    <div class="list">${line(r.host,"Phone network","Local Wi-Fi / mobile connection")}
-    ${line(r.srflx,"Internet address","Found through the public STUN server")}
-    ${line(r.relay,"Relay server (TURN)", r.relay?("Logged in · "+r.relayInfo):(r.err||(r.turns?"Checking "+r.turns+"…":"No relay server set in this build")))}
-    ${done?`<div class="empty" style="padding:20px 24px;text-align:left">${r.relay?"Calls can connect on any network, including 4G/5G.":r.turns?"Calls will only connect when both phones can reach each other directly. Send a screenshot of this screen.":"This build has no relay server."}</div>`:`<div class="empty">Testing… about 10 seconds</div>`}</div>`;
+  const tests=[{key:"stun", label:"Internet address (STUN)", cfg:{iceServers:[{urls:"stun:stun.l.google.com:19302"}]}}];
+  (CFG.turn||[]).forEach(t=>[].concat(t.urls).forEach(u=>tests.push({key:u, label:u.replace(/^turns?:/,"").replace("?transport="," · ")+(u.startsWith("turns:")?" · TLS":""), cfg:{iceServers:[{urls:u,username:t.username,credential:t.credential}],iceTransportPolicy:"relay"}})));
+  const res={};
+  const icon=ok=>`<span class="av sm" style="background:${ok===undefined?"var(--raise)":ok?"var(--good)":"var(--bad)"};font-size:15px;width:34px;height:34px">${ok===undefined?"…":ok?"✓":"✕"}</span>`;
+  const why=(r,stun)=>{ if(!r) return "Testing…"; if(stun) return r.types.srflx?"OK · public address found":"No public address (STUN blocked on this network)";
+    const t=Object.keys(r.types).filter(k=>k.startsWith("relay")); if(t.length) return "OK · "+t.join(", "); const e=r.errs[0]||"";
+    return e.startsWith("401")?"Login rejected (401)":e.startsWith("701")?"Not reachable on this network (701)":e?("Failed · "+e):"No reply"; };
+  const draw=done=>{ const relayOk=tests.slice(1).some(t=>res[t.key]&&res[t.key].ok);
+    sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Connection test</b><div style="font-size:12.5px;color:#b9b3ab">${navigator.onLine?"Online":"Offline"} · ${tests.length-1} relay routes</div></div></header>
+    <div class="list">${tests.map((t,i)=>`${i===1?'<div class="sec">Relay servers</div>':""}<div class="row" style="cursor:default">${icon(res[t.key]&&res[t.key].ok)}<div class="mid"><div class="top"><span class="name" style="font-size:14.5px">${esc(t.label)}</span></div><div class="sub"><span style="white-space:normal">${esc(why(res[t.key],t.key==="stun"))}</span></div></div></div>`).join("")}
+    ${done?`<div class="empty" style="padding:18px 22px;text-align:left">${relayOk?"At least one relay works on this network, so calls can connect.":"No relay works on this network, so calls between different networks will fail."} Send a screenshot of this screen if calls still fail.</div>`:`<div class="empty">Testing… about 10 seconds</div>`}</div>`;
     sh.hidden=false; };
-  const turnUrls=(CFG.turn||[]).flatMap(t=>[].concat(t.urls)).join(", ");
-  const r={host:null,srflx:null,relay:null,turns:turnUrls,err:"",relayInfo:""}; draw(r,false);
   sh.onclick=e=>{ if(e.target.closest("[data-close]")) sh.hidden=true; };
-  let pc; try{ pc=new RTCPeerConnection({iceServers:ICE.iceServers}); }catch(e){ r.err="WebRTC not available: "+e.message; draw(r,true); return; }
-  pc.createDataChannel("t");
-  pc.onicecandidate=e=>{ const c=e.candidate; if(!c) return;
-    if(c.type==="host") r.host=true; if(c.type==="srflx") r.srflx=true;
-    if(c.type==="relay"){ r.relay=true; r.relayInfo=(c.relayProtocol||c.protocol||"")+" "+(c.address||""); }
-    draw(r,false); };
-  pc.onicecandidateerror=e=>{ if(!/turn/i.test(e.url||"")) return;
-    const why = e.errorCode===401 ? "Username or password rejected (401)" : e.errorCode===701 ? "Server not reachable from this network" : ("Error "+e.errorCode+" "+(e.errorText||""));
-    r.err = why+" · "+(e.url||""); draw(r,false); };
-  await pc.setLocalDescription(await pc.createOffer());
-  await new Promise(res=>{ const t=setTimeout(res,10000); pc.onicegatheringstatechange=()=>{ if(pc.iceGatheringState==="complete"){ clearTimeout(t); setTimeout(res,300); } }; });
-  pc.close(); if(r.host===null) r.host=false; if(r.srflx===null) r.srflx=false; if(r.relay===null) r.relay=false;
-  if(!r.relay && !r.err && turnUrls) r.err="No reply from the relay server";
-  draw(r,true);
+  draw(false);
+  await Promise.all(tests.map(async t=>{ const r=await gatherWith(t.cfg,9000);
+    r.ok = t.key==="stun" ? !!r.types.srflx : Object.keys(r.types).some(k=>k.startsWith("relay")); res[t.key]=r; draw(false); }));
+  draw(true);
+  const d={at:Date.now(), online:navigator.onLine, ua:navigator.userAgent.slice(0,140), results:tests.map(t=>({route:t.label, ok:!!(res[t.key]&&res[t.key].ok), detail:why(res[t.key],t.key==="stun")}))};
+  try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
+  if(navigator.connection) d.net=navigator.connection.type||navigator.connection.effectiveType||"";
+  api.saveDiag("diagNet",d);
 }
 
 /* =========================  CALLS  ========================= */
@@ -916,28 +927,45 @@ function attachRemote(s){
 function newSession(peer, video, outgoing){
   const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),types:new Set(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
   sess.speaker=!!video || PREFS.speakerVoice; sess.connected=api.demo;
+  const t0=Date.now(); sess.diag={at:t0, role:outgoing?"caller":"callee", video:!!video, ua:navigator.userAgent.slice(0,140),
+    relays:(CFG.turn||[]).flatMap(t=>[].concat(t.urls)).length, ev:[], local:{}, remote:{}, errs:{}};
+  sess.log=e=>{ if(sess.diag.ev.length<80) sess.diag.ev.push(((Date.now()-t0)/1000).toFixed(1)+"s "+e); };
+  sess.logCand=c=>{ sess.types.add(c.type); const k=c.type+"/"+(c.relayProtocol||c.protocol||""); sess.diag.local[k]=(sess.diag.local[k]||0)+1; };
+  sess.logRemote=c=>{ const m=/ typ (\w+)/.exec(c.candidate||""); const k=(m?m[1]:"?")+"/"+((/ (udp|tcp) /i.exec(c.candidate||"")||[])[1]||"").toLowerCase(); sess.diag.remote[k]=(sess.diag.remote[k]||0)+1; };
+  sess.saveDiag=async why=>{ if(api.demo||sess.diagSaved||!sess.pc&&!sess.diag.ev.length) return; sess.diagSaved=true; const d=sess.diag; d.end=why; d.connected=!!sess.connAt; d.secs=((Date.now()-t0)/1000)|0;
+    try{ if(sess.pc){ const st=await sess.pc.getStats(); const pairs={}; let sel=null; const c={};
+      st.forEach(s=>{ if(s.type==="local-candidate"||s.type==="remote-candidate") c[s.id]=s; if(s.type==="candidate-pair"){ pairs[s.state]=(pairs[s.state]||0)+1; if(s.nominated&&s.state==="succeeded") sel=s; }
+        if(s.type==="inbound-rtp"&&s.kind==="audio") d.audioInBytes=s.bytesReceived; if(s.type==="outbound-rtp"&&s.kind==="audio") d.audioOutBytes=s.bytesSent; });
+      d.pairs=pairs; if(sel){ const l=c[sel.localCandidateId]||{}, r=c[sel.remoteCandidateId]||{}; d.selected=(l.candidateType||"")+"/"+(l.relayProtocol||l.protocol||"")+" -> "+(r.candidateType||"")+"/"+(r.protocol||""); } } }catch(e){ d.statsErr=String(e); }
+    try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
+    api.saveDiag("diagCall",d); };
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
     if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
-      clearInterval(sess.tick); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
+      clearInterval(sess.tick); sess.log("give-up 25s"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
       toast("Call could not connect. Check Settings → Test connection."); setTimeout(()=>sess.hangup(),4000); },25000);
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
       if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent="Connecting…"; },1000); };
-  sess.close=(why)=>{ if(sess.closed) return; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
-    sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop()); if(sess.pc) sess.pc.close();
+  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
+    sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
+    sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
     setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; },why==="ended"?600:1400); call=null; };
   sess.hangup=()=>{ if(sess.closed) return; sess.setStatus(sess.startedAt?{status:"ended",endedAt:Date.now()}:{status:sess.outgoing?"missed":"declined",endedAt:Date.now()}); sess.close("ended"); };
   return sess;
 }
 async function prepare(sess){
-  try{ sess.local=await getMedia(sess.video); }
-  catch(e){ if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
-  if(!sess.local){ toast("Allow microphone access to make calls"); return false; }
+  try{ sess.local=await getMedia(sess.video); sess.log("media ok "+sess.local.getTracks().map(t=>t.kind).join("+")); }
+  catch(e){ sess.log("media err "+(e&&e.name)); if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
+  if(!sess.local){ sess.log("no media"); sess.saveDiag("no-media"); toast("Allow microphone access to make calls"); return false; }
   if(!api.demo){
     const pc=new RTCPeerConnection({...ICE, iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
-    pc.oniceconnectionstatechange=()=>{ const st=pc.iceConnectionState;
+    pc.onicecandidateerror=e=>{ const k=e.errorCode+" "+(e.url||""); sess.diag.errs[k]=(sess.diag.errs[k]||0)+1; };
+    pc.onconnectionstatechange=()=>sess.log("conn "+pc.connectionState);
+    pc.onsignalingstatechange=()=>sess.log("sig "+pc.signalingState);
+    pc.onicegatheringstatechange=()=>sess.log("gather "+pc.iceGatheringState);
+    pc.oniceconnectionstatechange=()=>{ const st=pc.iceConnectionState; sess.log("ice "+st);
       if(st==="connected"||st==="completed"){ sess.connected=true; clearTimeout(sess.failT); attachRemote(sess); route(sess); }
       if(st==="disconnected"){ const p=$("#callSt"); if(p) p.textContent="Reconnecting…"; }
       if(st==="failed"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
