@@ -55,14 +55,14 @@ final class NativeWatcher {
         watchingUid = u.getUid();
         final String uid = watchingUid;
         final FirebaseFirestore fs = FirebaseFirestore.getInstance(fa);
-        Map<String, Object> st = new HashMap<>();
-        st.put("startedAt", System.currentTimeMillis()); st.put("state", "listening");
-        st.put("device", Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE);
-        st.put("notifications", NotificationManagerCompat.from(app).areNotificationsEnabled());
+        Map<String, Object> info = new HashMap<>();
+        info.put("startedAt", System.currentTimeMillis()); info.put("state", "listening");
+        info.put("device", Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE);
+        info.put("notifications", NotificationManagerCompat.from(app).areNotificationsEnabled());
         PowerManager pm = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
-        st.put("batteryUnrestricted", pm != null && pm.isIgnoringBatteryOptimizations(app.getPackageName()));
-        if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = app.getSystemService(NotificationManager.class); st.put("fullScreenAllowed", nm != null && nm.canUseFullScreenIntent()); }
-        diag(fs, uid, st);
+        info.put("batteryUnrestricted", pm != null && pm.isIgnoringBatteryOptimizations(app.getPackageName()));
+        if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = app.getSystemService(NotificationManager.class); info.put("fullScreenAllowed", nm != null && nm.canUseFullScreenIntent()); }
+        diag(fs, uid, info);
 
         callReg = fs.collection("calls").whereEqualTo("callee", uid).whereEqualTo("status", "ringing")
             .addSnapshotListener((snap, err) -> {
