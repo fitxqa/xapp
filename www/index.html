@@ -802,10 +802,27 @@ async function getMedia(video){
     audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,sampleRate:48000},
     video: video ? {width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30},facingMode:"user"} : false });
 }
+/* native bridge (APK): audio routing + back button */
+function nat(plugin, method, opts={}){
+  try{ const C=window.Capacitor; if(!C||!C.getPlatform||C.getPlatform()==="web") return Promise.resolve();
+    if(C.Plugins&&C.Plugins[plugin]&&C.Plugins[plugin][method]) return Promise.resolve(C.Plugins[plugin][method](opts)).catch(()=>{});
+    if(C.nativePromise) return C.nativePromise(plugin,method,opts).catch(()=>{}); }catch(e){}
+  return Promise.resolve();
+}
+function route(s){ nat("AudioRoute","set",{active:true,speaker:!!s.speaker}); }
+function attachRemote(s){
+  [$("#rv"),$("#ra")].forEach(el=>{ if(!el) return; if(el.srcObject!==s.remote) el.srcObject=s.remote;
+    el.muted = el.id==="rv"; if(el.id==="ra") el.volume=1;   // sound plays through the audio element only
+    const pr=el.play(); if(pr&&pr.catch) pr.catch(()=>{}); });
+  if(api.demo){ const rv=$("#rv"); if(rv&&s.local&&s.startedAt) rv.srcObject=s.local; }
+}
 function newSession(peer, video, outgoing){
   const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
-  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); drawCall("active"); sess.tick=setInterval(()=>{ const p=$("#callSt"); if(p) p.textContent=dur((Date.now()-sess.startedAt)/1000); },1000); };
-  sess.close=(why)=>{ if(sess.closed) return; sess.closed=true; stopTone(); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.demoT);
+  sess.speaker=!!video; sess.connected=api.demo;
+  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
+    sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
+      if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent="Connecting…"; },1000); };
+  sess.close=(why)=>{ if(sess.closed) return; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop()); if(sess.pc) sess.pc.close();
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
     setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; },why==="ended"?600:1400); call=null; };
@@ -819,8 +836,12 @@ async function prepare(sess){
   if(!api.demo){
     const pc=new RTCPeerConnection(ICE); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
-    pc.ontrack=e=>{ e.streams[0].getTracks().forEach(t=>{ if(!sess.remote.getTracks().includes(t)) sess.remote.addTrack(t); }); const v=$("#rv"); if(v&&!v.srcObject) v.srcObject=sess.remote; };
-    pc.onconnectionstatechange=()=>{ if(pc.connectionState==="failed") { toast("Connection lost"); sess.hangup(); } };
+    pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
+    pc.oniceconnectionstatechange=()=>{ const st=pc.iceConnectionState;
+      if(st==="connected"||st==="completed"){ sess.connected=true; clearTimeout(sess.failT); attachRemote(sess); route(sess); }
+      if(st==="disconnected"){ const p=$("#callSt"); if(p) p.textContent="Reconnecting…"; }
+      if(st==="failed"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Can't connect on this network";
+        toast("The networks blocked the call. A relay (TURN) server is needed."); sess.failT=setTimeout(()=>sess.hangup(),3500); } };
   }
   return true;
 }
@@ -849,21 +870,20 @@ function drawCall(state){
   const showVid=s.video && (state==="active"||state==="outgoing"||state==="connecting") && s.local;
   el.classList.toggle("video-on",!!(s.video&&state==="active"));
   const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
-  el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline></video>`:`<audio id="ra" autoplay></audio>`}
+  el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
     <div class="info"><span class="enc">Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
     <div class="ctrls">${state==="incoming"
       ? `<button class="end" id="kDec" aria-label="Decline">${endIco}</button><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button>`
-      : `<button id="kSpk" aria-label="Speaker">${ico("speaker")}</button>${s.video?`<button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button>`:""}
+      : `<button id="kSpk" aria-label="Speaker" class="${s.speaker?"on":""}">${ico("speaker")}</button>${s.video?`<button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button>`:""}
          <button id="kMute" aria-label="Mute" class="${s.muted?"on":""}">${ico(s.muted?"micoff":"mic")}</button><button class="end" id="kEnd" aria-label="End call">${endIco}</button>`}</div>`;
   el.hidden=false;
   const lv=$("#lv"); if(lv&&s.local) lv.srcObject=s.local;
-  const rv=$("#rv"), ra=$("#ra"); if(rv) rv.srcObject=s.remote; if(ra) ra.srcObject=s.remote;
-  if(state==="active"&&api.demo&&rv&&s.local) rv.srcObject=s.local;
+  attachRemote(s);
   if(state==="incoming"){ $("#kDec").onclick=()=>{ api.declineCall(s.inc.id); s.close("declined"); }; $("#kAns").onclick=answer; return; }
   $("#kEnd").onclick=()=>s.hangup();
   $("#kMute").onclick=()=>{ s.muted=!s.muted; s.local&&s.local.getAudioTracks().forEach(t=>t.enabled=!s.muted); const b=$("#kMute"); b.classList.toggle("on",s.muted); b.innerHTML=ico(s.muted?"micoff":"mic"); };
-  $("#kSpk").onclick=e=>{ e.currentTarget.classList.toggle("on"); };
+  $("#kSpk").onclick=e=>{ s.speaker=!s.speaker; e.currentTarget.classList.toggle("on",s.speaker); route(s); toast(s.speaker?"Speaker on":"Earpiece"); };
   if($("#kCam")) $("#kCam").onclick=()=>{ s.camOff=!s.camOff; s.local&&s.local.getVideoTracks().forEach(t=>t.enabled=!s.camOff); const b=$("#kCam"); b.classList.toggle("on",s.camOff); b.innerHTML=ico(s.camOff?"videooff":"video"); };
   if($("#kFlip")) $("#kFlip").onclick=async()=>{ try{ s.front=!s.front; const ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:s.front?"user":"environment",width:{ideal:1280},height:{ideal:720}}});
     const nt=ns.getVideoTracks()[0], old=s.local.getVideoTracks()[0]; if(s.pc){ const snd=s.pc.getSenders().find(x=>x.track&&x.track.kind==="video"); snd&&snd.replaceTrack(nt); }
@@ -871,14 +891,16 @@ function drawCall(state){
 }
 addEventListener("beforeunload",()=>{ if(call) call.hangup(); });
 /* Android back button (APK) */
-try{ const App=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.App;
-  if(App) App.addListener("backButton",()=>{
-    if(call) return; if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
-    if(!$("#sheet").hidden){ $("#sheet").hidden=true; return; }
-    if(S.peer&&innerWidth<900){ closeChat(); return; }
-    if(S.tab!=="chats"){ document.querySelector('[data-tab="chats"]').click(); return; }
-    App.minimizeApp ? App.minimizeApp() : App.exitApp();
-  }); }catch(e){}
+function onBack(){
+  if(call) return; if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
+  if(!$("#sheet").hidden){ $("#sheet").hidden=true; return; }
+  if(S.peer&&innerWidth<900){ closeChat(); return; }
+  if(S.tab!=="chats"){ document.querySelector('[data-tab="chats"]').click(); return; }
+  nat("App","minimizeApp");
+}
+try{ const C=window.Capacitor; if(C&&C.getPlatform&&C.getPlatform()!=="web"){
+  if(C.Plugins&&C.Plugins.App&&C.Plugins.App.addListener) C.Plugins.App.addListener("backButton",onBack);
+  else if(C.nativeCallback) C.nativeCallback("App","addListener",{eventName:"backButton"},onBack); } }catch(e){}
 </script>
 </body>
 </html>

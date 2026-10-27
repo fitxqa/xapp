@@ -36,6 +36,7 @@ jobs:
           npx -y @capacitor/assets@3.0.5 generate --android \
             --iconBackgroundColor '#0b0b0c' --iconBackgroundColorDark '#0b0b0c' \
             --splashBackgroundColor '#0b0b0c' --splashBackgroundColorDark '#0b0b0c'
+          cp native/*.java android/app/src/main/java/qa/fitx/xapp/
 
       - name: Camera / microphone permissions, version, signing
         run: |
