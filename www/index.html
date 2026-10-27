@@ -379,7 +379,7 @@ function makeFire(){
     logout(){ return auth.signOut(); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
-    saveDiag(k,d){ if(me) C("users").doc(me).set({[k]:d},{merge:true}).catch(()=>{}); },
+    saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
     watchUsers(cb){ return C("users").onSnapshot(s=>cb(s.docs.map(d=>{ const x={uid:d.id,...d.data()}; if(!x.name) x.name=x.username||"Xapp user"; return x; }))); },
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     watchMessages(cid, cb){ return C("chats").doc(cid).collection("messages").orderBy("at").limitToLast(300).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
@@ -445,7 +445,7 @@ function makeFire(){
       const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
       await ref.update({answer:{type:ans.type,sdp:ans.sdp}, status:"active", answeredAt:Date.now()});
       sess.unsubs.push(offC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
-      sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && d.status==="ended") sess.close("ended"); }));
+      sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && ["ended","missed"].includes(d.status)) sess.close("ended"); }));
       sess.setStatus = st => ref.update(st).catch(()=>{});
       sess.onActive();
     },
@@ -949,7 +949,7 @@ function newSession(peer, video, outgoing){
       clearInterval(sess.tick); sess.log("give-up 25s"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
       toast("Call could not connect. Check Settings → Test connection."); setTimeout(()=>sess.hangup(),4000); },25000);
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
-      if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent="Connecting…"; },1000); };
+      if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent=sess.connAt?"Reconnecting…":"Connecting…"; },1000); };
   sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
@@ -972,7 +972,7 @@ async function prepare(sess){
     pc.onicegatheringstatechange=()=>sess.log("gather "+pc.iceGatheringState);
     pc.oniceconnectionstatechange=()=>{ const st=pc.iceConnectionState; sess.log("ice "+st);
       if(st==="connected"||st==="completed"){ sess.connected=true; clearTimeout(sess.failT); attachRemote(sess); route(sess); }
-      if(st==="disconnected"){ const p=$("#callSt"); if(p) p.textContent="Reconnecting…"; }
+      if(st==="disconnected"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Reconnecting…"; }
       if(st==="failed"){ sess.connected=false; const p=$("#callSt"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
         toast("The networks blocked the call. A relay (TURN) server is needed."); sess.failT=setTimeout(()=>sess.hangup(),3500); } };
   }
@@ -987,14 +987,15 @@ async function startCall(peer, video){
   sess.missT=setTimeout(()=>{ if(!sess.startedAt) { sess.setStatus({status:"missed"}); sess.close("missed"); } },40000);
 }
 function incoming(c){
+  if(call && (call.id===c.id || (call.inc && call.inc.id===c.id))) return;   // same call reported again
   if(call){ api.declineCall(c.id); return; }
-  ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; drawCall("incoming");
+  ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
   tone([[523,180],[659,180],[784,260],[0,900]]);
   if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ const u=S.users[c.caller]; new Notification(`${u?u.name:"Xapp"} is calling`,{body:c.video?"Video call":"Voice call",tag:"call"}); }catch(e){} }
 }
-function gone(id){ if(call && call.inc && call.inc.id===id && !call.startedAt) call.close("missed"); }
+function gone(id){ if(call && call.inc && call.inc.id===id && !call.startedAt && !call.answering){ call.log("caller cancelled"); call.close("missed"); } }
 async function answer(){
-  const sess=call; stopTone(); drawCall("connecting");
+  const sess=call; if(!sess||sess.answering) return; sess.answering=true; sess.log("answer tapped"); stopTone(); drawCall("connecting");
   if(!await prepare(sess)){ api.declineCall(sess.inc.id); sess.close("ended"); return; }
   try{ await api.acceptCall(sess.inc,sess); }catch(e){ toast("Could not connect the call"); sess.close("ended"); }
 }
