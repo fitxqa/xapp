@@ -30,6 +30,18 @@ jobs:
       - name: Build web app
         run: npm run build
 
+      - name: Relay (TURN) server from secrets
+        env:
+          TU: ${{ secrets.XAPP_TURN_USER }}
+          TP: ${{ secrets.XAPP_TURN_PASS }}
+        run: |
+          if [ -n "$TU" ] && [ -n "$TP" ]; then
+            node -e 'const fs=require("fs");const s="free.expressturn.com:3478";fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.turn = "+JSON.stringify([{urls:["turn:"+s,"turn:"+s+"?transport=tcp"],username:process.env.TU,credential:process.env.TP}])+";\n");'
+            echo "Relay server added"
+          else
+            echo "::warning::XAPP_TURN_USER / XAPP_TURN_PASS secrets missing — calls on mobile data may not connect."
+          fi
+
       - name: Create Android project + Xapp icon
         run: |
           npx cap add android
