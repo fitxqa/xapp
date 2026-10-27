@@ -59,11 +59,10 @@ if not servers: print("::error::No relay secrets available to this workflow"); s
 
 summary = []
 for name, u, p, probes, urls in servers:
-    print(f"::notice title={name} secrets::username length {len(u)}, password length {len(p)}, username starts '{u[:3]}…'")
+
     for host, port, proto in probes:
         r = allocate(host, port, proto, u, p)
-        lvl = "notice" if r == "OK" else "warning"
-        print(f"::{lvl} title={name} login {proto.upper()} {port}::{r}"); summary.append((name, f"login {proto} {port}", r))
+        summary.append((name, f"login {proto} {port}", r))
 
 # Real WebRTC call through each relay (relay-only), in headless Chrome
 from playwright.sync_api import sync_playwright
@@ -92,7 +91,8 @@ with sync_playwright() as pw:
             ice = {"iceServers": [{"urls": [url], "username": u, "credential": p}], "iceTransportPolicy": "relay"}
             r = pg.evaluate("ice=>test(ice)", ice)
             ok = r["delivered"]
-            print(f"::{'notice' if ok else 'warning'} title={name} CALL via {url}::{'WORKS' if ok else 'FAILED'} · {json.dumps(r)}")
-            summary.append((name, "call " + url, "WORKS" if ok else "FAILED"))
+            summary.append((name, "call " + url.split(":",1)[0] + " " + url.split(":")[-1], ("WORKS " + r["via"]) if ok else ("FAILED " + ",".join(r["errors"]))))
     br.close()
-print("\nSUMMARY"); [print(f"{n:12} {k:55} {v}") for n, k, v in summary]
+for name in dict.fromkeys(n for n, _, _ in summary):
+    rows = [f"{k} = {v}" for n, k, v in summary if n == name]
+    print(f"::notice title=RESULT {name}::" + " | ".join(rows))
