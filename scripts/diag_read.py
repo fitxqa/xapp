@@ -19,7 +19,11 @@ acct = post(f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={KEY
             {"email": f"diag-{rnd.token_hex(5)}@xapp.local", "password": rnd.token_urlsafe(16), "returnSecureToken": True})
 tok = acct["idToken"]
 try:
-    docs = get(f"https://firestore.googleapis.com/v1/projects/{PROJ}/databases/(default)/documents/users?pageSize=300", tok).get("documents", [])
+    docs, page = [], ""
+    while True:   # the rules allow at most 10 per request
+        r = get(f"https://firestore.googleapis.com/v1/projects/{PROJ}/databases/(default)/documents/users?pageSize=10" + (f"&pageToken={page}" if page else ""), tok)
+        docs += r.get("documents", []); page = r.get("nextPageToken")
+        if not page or len(docs) > 300: break
     print(f"::notice title=Users::{len(docs)} accounts")
     now = time.time() * 1000
     for d in docs:

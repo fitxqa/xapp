@@ -226,12 +226,13 @@ button.set:hover{background:var(--raise)}
     <div class="logo"><svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><path d="M256 72 A168 168 0 1 1 145 366 L88 428 L110 324 A168 168 0 0 1 256 72 Z" fill="#FF6A13"/><path d="M196 180 L316 300 M316 180 L196 300" stroke="#0B0B0C" stroke-width="48" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span><small>Chat · Call · Updates</small></div>
     <div style="height:14px"></div>
     <div class="demo" id="demoNote" hidden>Demo mode with sample contacts. Xapp goes live once its Firebase settings are added to config.js. Sign in with any username.</div>
-    <input id="lgName" placeholder="Full name (e.g. Ahmed – Technician)" hidden autocomplete="name">
-    <input id="lgUser" placeholder="Username" required autocomplete="username" autocapitalize="none">
+    <input id="lgName" placeholder="Your name" hidden autocomplete="name">
+    <input id="lgUser" placeholder="Email or username" required autocomplete="username" autocapitalize="none" inputmode="email">
     <input id="lgPass" type="password" placeholder="Password (min 6)" required minlength="6" autocomplete="current-password">
     <div class="err" id="lgErr"></div>
     <button class="btn" type="submit" id="lgBtn">Sign in</button>
     <button class="swap" type="button" id="lgSwap">New here? Create account</button>
+    <button class="swap" type="button" id="lgForgot" style="color:#a39d96;font-weight:500">Forgot password?</button>
   </form>
 </section>
 
@@ -361,7 +362,8 @@ function makeFire(){
   db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
   const C = n => db.collection(n);
   let me = null;
-  const mail = u => u.trim().toLowerCase().replace(/[^a-z0-9._-]/g,"") + "@" + LOGIN_DOMAIN;
+  const isEmail = u => u.includes("@");
+  const mail = u => isEmail(u) ? u.trim().toLowerCase() : u.trim().toLowerCase().replace(/[^a-z0-9._-]/g,"") + "@" + LOGIN_DOMAIN;
   return {
     demo:false,
     onAuth(cb){
@@ -372,24 +374,48 @@ function makeFire(){
         for(let i=0;i<3;i++){ try{ d = (await C("users").doc(me).get()).data(); }catch(e){} if(d) break; await new Promise(r=>setTimeout(r,800)); }
         d = d || {};
         const uname = d.username || u.email.split("@")[0];
-        if(!d.name || !d.username){   // repair an account whose profile did not save at sign-up
-          const fix = {uid:me, username:uname, name:d.name||uname}; if(!d.about) fix.about="Hey there! I am using Xapp";
+        const realEmail = u.email && !u.email.endsWith("@"+LOGIN_DOMAIN) ? u.email.toLowerCase() : null;
+        if(!d.name || !d.username || (realEmail && !d.email)){   // repair an account whose profile did not save at sign-up
+          const fix = {uid:me, username:uname, name:d.name||uname}; if(!d.about) fix.about="Hey there! I am using Xapp"; if(realEmail) fix.email=realEmail;
           C("users").doc(me).set(fix,{merge:true}).catch(()=>{}); d = {...fix, ...d, ...fix};
         }
-        cb({uid:me, username:uname, name:d.name||uname, about:d.about||"", photo:d.photo||""});
+        cb({uid:me, username:uname, email:realEmail||"", name:d.name||uname, about:d.about||"", photo:d.photo||"", contacts:d.contacts||[]});
       });
     },
     async login(u,p){ await auth.signInWithEmailAndPassword(mail(u),p); },
     async signup(u,p,name){
       const c = await auth.createUserWithEmailAndPassword(mail(u),p);
-      await C("users").doc(c.user.uid).set({uid:c.user.uid, username:u.trim().toLowerCase(), name:name||u, about:"Hey there! I am using Xapp", lastSeen:Date.now()});
+      const em = isEmail(u) ? u.trim().toLowerCase() : null;
+      const doc = {uid:c.user.uid, username: em ? em.split("@")[0] : u.trim().toLowerCase(), name: name || (em ? em.split("@")[0] : u), about:"Hey there! I am using Xapp", lastSeen:Date.now(), contacts:[]};
+      if(em) doc.email = em;
+      await C("users").doc(c.user.uid).set(doc);
     },
+    resetPassword(email){ return auth.sendPasswordResetEmail(email.trim().toLowerCase()); },
+    async findUser(q){
+      q = q.trim().toLowerCase().replace(/^@/,""); if(!q) return [];
+      const s = await C("users").where(isEmail(q) ? "email" : "username", "==", q).limit(10).get();
+      return s.docs.map(d=>({uid:d.id,...d.data()})).filter(x=>x.uid!==me);
+    },
+    addContact(uid){ return C("users").doc(me).set({contacts:firebase.firestore.FieldValue.arrayUnion(uid)},{merge:true}); },
+    removeContact(uid){ return C("users").doc(me).set({contacts:firebase.firestore.FieldValue.arrayRemove(uid)},{merge:true}); },
     logout(){ nat("Background","signOut"); return auth.signOut(); },
     emailFor(u){ return mail(u); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
     saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
-    watchUsers(cb){ return C("users").onSnapshot(s=>cb(s.docs.map(d=>{ const x={uid:d.id,...d.data()}; if(!x.name) x.name=x.username||"Xapp user"; return x; }))); },
+    /* Loads only the people this user knows (self, contacts, chat/call partners), one document each */
+    watchUsers(cb){
+      const subs=new Map(), data={}, want=new Set([me]);
+      const emit=()=>cb(Object.values(data));
+      const sync=()=>{ for(const id of want) if(!subs.has(id)) subs.set(id, C("users").doc(id).onSnapshot(s=>{
+        if(s.exists){ const x={uid:s.id,...s.data()}; if(!x.name) x.name=x.username||"Xapp user"; data[s.id]=x;
+          if(s.id===me) (x.contacts||[]).forEach(i=>want.add(i)), sync(); }
+        emit(); }, ()=>{})); };
+      this.wantUsers = ids => { let n=false; ids.forEach(i=>{ if(i&&!want.has(i)){ want.add(i); n=true; } }); if(n) sync(); };
+      sync();
+      return ()=>{ subs.forEach(u=>u()); subs.clear(); };
+    },
+    wantUsers(){},
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     watchMessages(cid, cb){ return C("chats").doc(cid).collection("messages").orderBy("at").limitToLast(300).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     async send(peer, m){
@@ -505,12 +531,16 @@ function makeDemo(){
   return {
     demo:true,
     onAuth(cb){ let s=null; try{ s=JSON.parse(localStorage.getItem("xappDemoMe")); }catch(e){} if(s){ me=s.uid; seed(); D.users.unshift(s); } cb(s); this._cb=cb; },
-    async login(u,p,name){ const s={uid:"me",username:u.toLowerCase(),name:name||u,about:"Hey there! I am using Xapp",lastSeen:Date.now()};
+    async login(u,p,name){ const s={uid:"me",username:u.toLowerCase(),name:name||u,about:"Hey there! I am using Xapp",lastSeen:Date.now(),contacts:["ahmed","joseph","sana","rashid"]};
       try{ localStorage.setItem("xappDemoMe",JSON.stringify(s)); }catch(e){} me="me"; seed(); D.users.unshift(s); this._cb(s); },
     signup(u,p,name){ return this.login(u,p,name); },
     emailFor(){ return null; },
+    resetPassword(){ return Promise.resolve(); },
+    async findUser(q){ q=q.trim().toLowerCase().replace(/^@/,""); return D.users.filter(u=>u.uid!==me&&(u.username===q||u.email===q)); },
+    async addContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=[...new Set([...(m.contacts||[]),uid])]; emitAll(); },
+    async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
-    ping(){}, saveDiag(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
+    ping(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -564,7 +594,11 @@ $("#tiChats").innerHTML=ico("chat"); $("#tiUpd").innerHTML=ico("updates"); $("#t
 /* =========================  AUTH  ========================= */
 let signupMode=false;
 $("#demoNote").hidden=!DEMO;
-$("#lgSwap").onclick=()=>{ signupMode=!signupMode; $("#lgName").hidden=!signupMode; $("#lgBtn").textContent=signupMode?"Create account":"Sign in"; $("#lgSwap").textContent=signupMode?"Already have an account? Sign in":"New here? Create account"; };
+$("#lgForgot").onclick=async()=>{ const u=$("#lgUser").value.trim();
+  if(!u.includes("@")){ $("#lgErr").textContent="Type the email you signed up with, then tap Forgot password. Accounts made with only a username can't reset by email."; return; }
+  try{ await api.resetPassword(u); $("#lgErr").textContent=""; toast("Password reset email sent to "+u); }
+  catch(e){ $("#lgErr").textContent="Could not send the reset email. Check the address."; } };
+$("#lgSwap").onclick=()=>{ signupMode=!signupMode; $("#lgForgot").hidden=signupMode; $("#lgName").hidden=!signupMode; $("#lgBtn").textContent=signupMode?"Create account":"Sign in"; $("#lgSwap").textContent=signupMode?"Already have an account? Sign in":"New here? Create account"; };
 $("#loginForm").onsubmit=async e=>{
   e.preventDefault(); $("#lgErr").textContent=""; $("#lgBtn").disabled=true;
   if("Notification" in window && Notification.permission==="default") Notification.requestPermission().catch(()=>{});
@@ -575,7 +609,8 @@ $("#loginForm").onsubmit=async e=>{
   }catch(err){
     const c=err&&err.code||""; $("#lgErr").textContent =
       c.includes("invalid-credential")||c.includes("wrong-password")||c.includes("user-not-found") ? "Wrong username or password." :
-      c.includes("email-already") ? "That username is taken. Pick another." :
+      c.includes("email-already") ? "That email or username is already used. Sign in instead, or pick another." :
+      c.includes("invalid-email") ? "That email address doesn't look right." :
       c.includes("weak-password") ? "Password needs at least 6 characters." : "Could not sign in. Check your connection and try again.";
   }
   $("#lgBtn").disabled=false;
@@ -584,12 +619,14 @@ $("#loginForm").onsubmit=async e=>{
 let subs=[];
 api.onAuth(user=>{
   subs.forEach(f=>f&&f()); subs=[];
-  if(!user){ $("#login").hidden=false; $("#shell").hidden=true; return; }
+  if(!user){ $("#login").hidden=false; $("#shell").hidden=true;
+    if(signupMode) $("#lgSwap").click();   // always come back to the sign-in form
+    $("#lgPass").value=""; return; }
   S.me=user; $("#login").hidden=true; $("#shell").hidden=false; $("#mTest").hidden=!api.demo;
   subs.push(api.watchUsers(us=>{ S.users={}; us.forEach(u=>S.users[u.uid]=u); if(S.users[S.me.uid]) S.me={...S.me,...S.users[S.me.uid]}; renderList(); if(S.peer) renderChatHead(); }));
-  subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; renderList(); }));
+  subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.map(peerOf)); renderList(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
-  subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); renderList(); }));
+  subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
   subs.push(api.watchIncoming(incoming, gone));
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
@@ -642,7 +679,8 @@ function renderList(force){
   }
   if(S.tab==="updates"){
     const mine=S.statuses.filter(s=>s.uid===S.me.uid&&s.expiresAt>Date.now());
-    const byUser={}; S.statuses.filter(s=>s.uid!==S.me.uid&&s.expiresAt>Date.now()).forEach(s=>(byUser[s.uid]=byUser[s.uid]||[]).push(s));
+    const known=new Set(myContacts().map(u=>u.uid));
+    const byUser={}; S.statuses.filter(s=>s.uid!==S.me.uid&&known.has(s.uid)&&s.expiresAt>Date.now()).forEach(s=>(byUser[s.uid]=byUser[s.uid]||[]).push(s));
     const groups=Object.entries(byUser).map(([uid,a])=>({uid,a:a.sort((x,y)=>x.at-y.at)})).sort((x,y)=>y.a[y.a.length-1].at-x.a[x.a.length-1].at);
     const fresh=groups.filter(g=>g.a.some(s=>!S.seenStatus.has(s.id))), seen=groups.filter(g=>!fresh.includes(g));
     const row=g=>{ const u=S.users[g.uid]||{name:"Contact",uid:g.uid}; if(q&&!(u.name||"").toLowerCase().includes(q)) return "";
@@ -651,7 +689,7 @@ function renderList(force){
       <div class="mid"><div class="top"><span class="name">My status</span></div><div class="sub"><span>${mine.length?`${mine.length} update${mine.length>1?"s":""} · tap to view`:"Tap to add a photo or text update"}</span></div></div></button>
       ${fresh.length?`<div class="sec">Recent updates</div>${fresh.map(row).join("")}`:""}
       ${seen.length?`<div class="sec">Viewed</div>${seen.map(row).join("")}`:""}
-      ${!groups.length?`<div class="empty">Team updates disappear after 24 hours.<br>Share a finished install or a site photo.</div>`:""}`;
+      ${!groups.length?`<div class="empty">Updates disappear after 24 hours.<br>Share a photo or a few words with your contacts.</div>`:""}`;
   }
   if(S.tab==="calls"){
     const rows=S.calls.filter(c=>c.status!=="ringing"||Date.now()-c.createdAt>60000).slice(0,80).map(c=>{
@@ -665,14 +703,15 @@ function renderList(force){
     L.innerHTML = rows || `<div class="empty">No calls yet.<br>Voice and HD video calls to any contact.</div>`;
   }
   if(S.tab==="contacts"){
-    const all=Object.values(S.users).filter(u=>u.uid!==S.me.uid).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+    const all=myContacts();
     const list=all.filter(u=>!q||(u.name||"").toLowerCase().includes(q)||(u.username||"").includes(q));
     const on=list.filter(isOnline);
     const row=u=>`<div class="row"><button style="display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}
         <div class="mid"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>${isOnline(u)?'<span class="in">online</span>':esc(u.about||"@"+(u.username||""))}</span></div></div></button>
       <button class="callbtn" data-call="${esc(u.uid)}" data-video="0" aria-label="Voice call ${esc(u.name)}">${ico("phone")}</button><button class="callbtn" data-call="${esc(u.uid)}" data-video="1" aria-label="Video call ${esc(u.name)}">${ico("video")}</button></div>`;
-    L.innerHTML = !all.length ? `<div class="empty">No contacts yet.<br>Everyone who installs Xapp and creates an account appears here automatically.</div>`
-      : (on.length?`<div class="sec">Online now · ${on.length}</div>${on.map(row).join("")}`:"") + `<div class="sec">All contacts · ${list.length}</div>${list.map(row).join("")||'<div class="empty">No match.</div>'}`;
+    const addRow=`<button class="row" data-add="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add contact</span></div><div class="sub"><span>Find people by username or email</span></div></div></button>`;
+    L.innerHTML = addRow + (!all.length ? `<div class="empty">No contacts yet.<br>Tap Add contact and type a family member's or friend's Xapp username or email.</div>`
+      : (on.length?`<div class="sec">Online now · ${on.length}</div>${on.map(row).join("")}`:"") + `<div class="sec">All contacts · ${list.length}</div>${list.map(row).join("")||'<div class="empty">No match.</div>'}`);
   }
   if(S.tab==="settings") renderSettings(L);
 }
@@ -701,12 +740,13 @@ function renderSettings(L){
     ${item("sounds","bell","Message sounds","Short tone when a message arrives",sw("sounds"))}
     ${"Notification" in window?item("alerts","bell","Pop-up alerts","Show messages when Xapp is in the background"):""}
     <div class="sec">About</div>
-    ${item("about","info","Xapp",`<span id="appVer">Version ${esc(APP_VERSION)}</span> · ${Object.keys(S.users).length} people`)}
+    ${item("about","info","Xapp",`<span id="appVer">Version ${esc(APP_VERSION)}</span> · ${myContacts().length} contacts`)}
     <div class="form" style="padding-top:8px"><button class="btn danger" data-set="logout">Sign out</button></div>`;
   nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="Version "+i.version; } });
 }
 const APP_VERSION="1.0";
 $("#list").onclick=e=>{
+  if(e.target.closest("[data-add]")) return openAddContact();
   const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
     if(a==="profile") return openProfile();
     if(a==="net") return netTest();
@@ -724,18 +764,44 @@ $("#list").onclick=e=>{
 };
 
 /* =========================  CONTACTS  ========================= */
+/* Public app: you only see people you added, plus anyone you have chatted or called with */
+function myContacts(){
+  const me=S.users[S.me.uid]||S.me, ids=new Set(me.contacts||[]);
+  S.chats.forEach(c=>{ const p=peerOf(c); if(p) ids.add(p); });
+  S.calls.forEach(c=>ids.add(c.caller===S.me.uid?c.callee:c.caller));
+  ids.delete(S.me.uid);
+  return [...ids].map(id=>S.users[id]).filter(Boolean).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+}
+function isSaved(uid){ const me=S.users[S.me.uid]||S.me; return (me.contacts||[]).includes(uid); }
+function openAddContact(){
+  const sh=$("#sheet");
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Add contact</b></div></header>
+    <form class="form" id="acForm"><label for="acQ">Username or email</label><input id="acQ" placeholder="e.g. sara or sara@gmail.com" autocapitalize="none" inputmode="email" required>
+    <button class="btn" type="submit">Find</button>
+    <p class="note">Ask your family and friends for their Xapp username, shown under their name in Settings. Your username is <b>@${esc(S.me.username||"")}</b>.</p></form>
+    <div class="list" id="acRes" style="flex:0 1 auto"></div>`;
+  sh.hidden=false; $("#acQ").focus();
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
+    const a=e.target.closest("[data-addc]"); if(a){ const uid=a.dataset.addc; api.wantUsers([uid]); await api.addContact(uid); toast("Contact added"); sh.hidden=true; openChat(uid); } };
+  $("#acForm").onsubmit=async e=>{ e.preventDefault(); const r=$("#acRes"); r.innerHTML=`<div class="empty">Searching…</div>`;
+    let found=[]; try{ found=await api.findUser($("#acQ").value); }catch(err){ r.innerHTML=`<div class="empty">Search failed. Check your connection.</div>`; return; }
+    r.innerHTML = found.length ? found.map(u=>`<div class="row">${avatar(u)}<div class="mid" style="display:flex;align-items:center;gap:8px"><div style="flex:1;min-width:0"><div class="top"><span class="name">${esc(u.name||u.username)}</span></div><div class="sub"><span>@${esc(u.username||"")}</span></div></div>
+      <button class="btn" style="padding:9px 16px" data-addc="${esc(u.uid)}">${isSaved(u.uid)?"Open chat":"Add"}</button></div></div>`).join("")
+      : `<div class="empty">Nobody found with that username or email.<br>Check the spelling, or ask them to install Xapp first.</div>`; };
+}
 function openContacts(mode){
-  const sh=$("#sheet"); const list=Object.values(S.users).filter(u=>u.uid!==S.me.uid).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  const sh=$("#sheet"); const list=myContacts();
   sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${mode==="call"?"New call":"Select contact"}</b><div style="font-size:12.5px;color:#b9b3ab">${list.length} contacts</div></div></header>
     <label class="search"><span>${ico("search")}</span><input id="cq" placeholder="Search name" aria-label="Search name"></label>
     <div class="list" id="clist"></div>`;
-  const draw=(q="")=>{ $("#clist").innerHTML = list.filter(u=>(u.name||"").toLowerCase().includes(q)).map(u=>`<div class="row">
+  const draw=(q="")=>{ $("#clist").innerHTML = `<button class="row" data-addnew="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add contact</span></div><div class="sub"><span>By username or email</span></div></div></button>` + (list.filter(u=>(u.name||"").toLowerCase().includes(q)).map(u=>`<div class="row">
       <button style="display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left" data-pick="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>${esc(u.about||"@"+(u.username||""))}</span></div></div></button>
       <button class="callbtn" data-c="${esc(u.uid)}" aria-label="Voice call">${ico("phone")}</button><button class="callbtn" data-v="${esc(u.uid)}" aria-label="Video call">${ico("video")}</button></div>`).join("")
-      || `<div class="empty">No contacts yet. Ask people to install Xapp and create an account.</div>`; };
+      || `<div class="empty">No contacts yet. Tap Add contact above.</div>`); };
   draw(); sh.hidden=false;
   $("#cq").oninput=e=>draw(e.target.value.toLowerCase());
   sh.onclick=e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
+    if(e.target.closest("[data-addnew]")) return openAddContact();
     const p=e.target.closest("[data-pick]"); if(p){ sh.hidden=true; return openChat(p.dataset.pick); }
     const c=e.target.closest("[data-c]"); if(c){ sh.hidden=true; return startCall(c.dataset.c,false); }
     const v=e.target.closest("[data-v]"); if(v){ sh.hidden=true; return startCall(v.dataset.v,true); } };
@@ -1062,6 +1128,7 @@ async function startCall(peer, video){
 function incoming(c){
   if(call && (call.id===c.id || (call.inc && call.inc.id===c.id))) return;   // same call reported again
   if(call){ api.declineCall(c.id); return; }
+  api.wantUsers([c.caller]);
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
   const nativeRings = document.hidden && S.bg && S.bg.signedIn;
   if(!nativeRings) tone([[523,180],[659,180],[784,260],[0,900]]);

@@ -3,8 +3,11 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
 
+    // Public app: anyone signed in can open one profile, or look up by exact username/email (max 10 results),
+    // but nobody can download the whole member list at once.
     match /users/{uid} {
-      allow read: if signed();
+      allow get: if signed();
+      allow list: if signed() && request.query.limit <= 10;
       allow write: if signed() && request.auth.uid == uid;
     }
     match /chats/{chatId} {
