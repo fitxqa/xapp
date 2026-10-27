@@ -719,10 +719,12 @@ function renderList(force){
 function bgSection(){
   const b=S.bg||{}, ok=v=>v?'<span class="in" style="font-weight:600">On</span>':'<span class="miss" style="font-weight:600">Off</span>';
   const item=(act,icon,title,sub,right)=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b><small>${sub}</small></span>${right||""}</button>`;
-  const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted;
+  const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false;
   return `<div class="sec">Ring when Xapp is closed${S.bg?(allOk?" · ready":" · needs setup"):""}</div>
     ${item("bgOn","phone","Background calls",b.signedIn?"Calls ring with the app closed":"Tap and enter your password once",ok(b.signedIn))}
     ${item("bgNotif","bell","Notifications",b.notifications?"Allowed":"Tap to allow ringing notifications",ok(b.notifications))}
+    ${item("bgMic","mic","Microphone",b.microphone===false?"Tap → Permissions → Microphone → Allow":"Allowed",ok(b.microphone!==false))}
+    ${item("bgFull","phone","Full-screen incoming calls",b.fullScreenAllowed===false?"Tap and switch on, so calls fill the screen":"Calls fill the screen",ok(b.fullScreenAllowed!==false))}
     ${item("bgBattery","settings","No battery restriction",b.batteryUnrestricted?"Xapp may run in the background":"Tap and choose Allow",ok(b.batteryUnrestricted))}
     ${item("bgAuto","wifi","Auto-launch"+(b.manufacturer?" ("+esc(b.manufacturer)+")":""),"Honor, Huawei, Xiaomi, Oppo, Vivo: allow Xapp to auto-launch and run in background")}`;
 }
@@ -753,6 +755,8 @@ $("#list").onclick=e=>{
     if(a==="bgOn") return (S.bg&&S.bg.signedIn)?toast("Background calls are already on"):bgPasswordSheet();
     if(a==="bgNotif") return nat("Background","openNotificationSettings");
     if(a==="bgBattery") return nat("Background","requestBattery");
+    if(a==="bgMic") return nat("Background","openAppInfo");
+    if(a==="bgFull") return nat("Background","openFullScreenSettings");
     if(a==="bgAuto") return nat("Background","openAutostart");
     if(a==="logout") return api.logout();
     if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
@@ -1097,10 +1101,25 @@ function newSession(peer, video, outgoing){
   sess.hangup=()=>{ if(sess.closed) return; sess.setStatus(sess.startedAt?{status:"ended",endedAt:Date.now()}:{status:sess.outgoing?"missed":"declined",endedAt:Date.now()}); sess.close("ended"); };
   return sess;
 }
+function micHelp(e){
+  const name=(e&&e.name)||"", busy=/NotReadable|TrackStart|Abort/.test(name), missing=/NotFound|Overconstrained/.test(name);
+  const sh=$("#sheet");
+  const title = busy ? "Microphone is busy" : missing ? "No microphone found" : "Microphone is blocked";
+  const body = busy ? "Another app is using the microphone right now: a phone call, WhatsApp, a voice recorder or a screen recorder. Finish or close it, then call again."
+    : missing ? "This phone did not report a working microphone. Restart the phone and try again."
+    : "Android is not letting Xapp use the microphone. Open Xapp's settings, tap Permissions → Microphone and choose “Allow only while using the app”. Avoid “Only this time”, which switches off again when Xapp closes.";
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${title}</b></div></header>
+    <div class="form"><p style="margin:0;line-height:1.5">${body}</p>
+    ${!busy&&!missing&&isNative()?'<button class="btn" id="micOpen">Open Xapp settings</button>':""}
+    <p class="note">Error: ${esc(name||"unknown")}</p></div>`;
+  sh.hidden=false; sh.onclick=ev=>{ if(ev.target.closest("[data-close]")) sh.hidden=true; };
+  const b=$("#micOpen"); if(b) b.onclick=()=>{ sh.hidden=true; nat("Background","openAppInfo"); };
+}
 async function prepare(sess){
+  let mediaErr=null;
   try{ sess.local=await getMedia(sess.video); sess.log("media ok "+sess.local.getTracks().map(t=>t.kind).join("+")); }
-  catch(e){ sess.log("media err "+(e&&e.name)); if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
-  if(!sess.local){ sess.log("no media"); sess.saveDiag("no-media"); toast("Allow microphone access to make calls"); return false; }
+  catch(e){ mediaErr=e; sess.log("media err "+(e&&e.name)); if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
+  if(!sess.local){ sess.log("no media"); sess.saveDiag("no-media"); micHelp(mediaErr); return false; }
   if(!api.demo){
     const pc=new RTCPeerConnection({...ICE, iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));

@@ -1,6 +1,9 @@
 package qa.fitx.xapp;
 
+import android.Manifest;
+import android.app.NotificationManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -59,6 +62,11 @@ public class BackgroundPlugin extends Plugin {
         PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
         r.put("batteryUnrestricted", pm == null || pm.isIgnoringBatteryOptimizations(ctx.getPackageName()));
         r.put("manufacturer", Build.MANUFACTURER);
+        r.put("microphone", ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED);
+        r.put("camera", ctx.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED);
+        boolean fs = true;
+        if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = ctx.getSystemService(NotificationManager.class); fs = nm != null && nm.canUseFullScreenIntent(); }
+        r.put("fullScreenAllowed", fs);
         call.resolve(r);
     }
 
@@ -105,6 +113,23 @@ public class BackgroundPlugin extends Plugin {
             getContext().startActivity(i);
         } catch (Exception e) { openAppSettings(); }
         call.resolve();
+    }
+
+    /** App info page (permissions: microphone, camera…). */
+    @PluginMethod
+    public void openAppInfo(PluginCall call) { openAppSettings(); call.resolve(); }
+
+    /** Android 14+: "Full screen notifications" switch, so incoming calls fill the screen. */
+    @PluginMethod
+    public void openFullScreenSettings(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= 34) {
+                Intent i = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getContext().getPackageName()))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i); call.resolve(); return;
+            }
+        } catch (Exception ignored) {}
+        openAppSettings(); call.resolve();
     }
 
     private void openAppSettings() {
