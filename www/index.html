@@ -62,9 +62,21 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .bar .grow{flex:1;min-width:0}
 .ibtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:inherit}
 .ibtn:hover{background:rgba(255,255,255,.08)}
-.tabs{background:var(--head);display:flex;border-bottom:1px solid #222}
-.tabs button{flex:1;padding:12px 0 11px;font-weight:700;font-size:13px;letter-spacing:1.4px;text-transform:uppercase;color:#a29c95;border-bottom:3px solid transparent;display:flex;justify-content:center;gap:6px;align-items:center}
-.tabs button[aria-selected="true"]{color:var(--orange);border-bottom-color:var(--orange)}
+.tabs{background:var(--head);display:flex;border-top:1px solid #222;padding:6px max(4px,env(safe-area-inset-right,0px)) 6px max(4px,env(safe-area-inset-left,0px))}
+.tabs button{flex:1;min-width:0;padding:4px 0 2px;font-weight:600;font-size:11.5px;color:#a29c95;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative}
+.tabs .ti{width:52px;height:30px;border-radius:15px;display:grid;place-items:center;transition:background .15s}
+.tabs button[aria-selected="true"]{color:var(--orange)}
+.tabs button[aria-selected="true"] .ti{background:rgba(255,106,19,.16)}
+.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);min-width:18px;height:18px;font-size:10.5px;padding:0 5px}
+.set{display:flex;align-items:center;gap:14px;padding:13px 18px;width:100%;text-align:left}
+button.set:hover{background:var(--raise)}
+.set .si{width:22px;color:var(--mute);display:grid;place-items:center;flex:none}
+.set .st{flex:1;min-width:0}.set .st b{display:block;font-weight:500;font-size:15.5px}.set .st small{display:block;color:var(--mute);font-size:13px;margin-top:1px}
+.switch{width:44px;height:26px;border-radius:13px;background:var(--line);position:relative;flex:none;transition:background .15s}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch.on{background:var(--orange)}.switch.on::after{transform:translateX(18px)}
+.me-card{display:flex;align-items:center;gap:16px;padding:18px;width:100%;text-align:left;border-bottom:1px solid var(--line)}
+.me-card b{font-size:19px;font-weight:600;display:block}.me-card small{color:var(--mute);font-size:14px}
 .badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--orange);color:var(--on-orange);font-size:11.5px;font-weight:700;display:inline-grid;place-items:center;letter-spacing:0;font-variant-numeric:tabular-nums}
 .search{display:flex;align-items:center;gap:8px;background:var(--raise);margin:10px 12px 4px;border-radius:22px;padding:0 14px;color:var(--mute)}
 .search input{flex:1;border:0;background:none;padding:10px 0;outline:0;min-width:0}
@@ -84,6 +96,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .av{width:50px;height:50px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:20px;color:#fff;background:#3a3a3f;background-size:cover;background-position:center;position:relative}
 .av.sm{width:40px;height:40px;font-size:16px}
 .av.xl{width:120px;height:120px;font-size:44px}
+.av.lg{width:64px;height:64px;font-size:26px}
 .av .dot{position:absolute;right:1px;bottom:1px;width:13px;height:13px;border-radius:50%;background:var(--good);border:2px solid var(--panel)}
 .ring{padding:3px;border-radius:50%;border:2.5px solid var(--orange);flex:none}
 .ring.seen{border-color:var(--line)}
@@ -222,22 +235,24 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
       <button class="ibtn" id="btnCam" aria-label="New status photo"></button>
       <button class="ibtn" id="btnMenu" aria-label="Menu"></button>
       <div class="menu" id="menu" hidden>
-        <button data-act="profile">Profile &amp; settings</button>
-        <button data-act="contacts">Staff directory</button>
+        <button data-act="settings">Settings</button>
+        <button data-act="contacts">Contacts</button>
         <button data-act="testcall" id="mTest" hidden>Test incoming call</button>
         <button data-act="logout">Sign out</button>
       </div>
     </header>
-    <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="chats" aria-selected="true">Chats <span class="badge" id="unreadAll" hidden></span></button>
-      <button role="tab" data-tab="updates" aria-selected="false">Updates</button>
-      <button role="tab" data-tab="calls" aria-selected="false">Calls <span class="badge" id="missedAll" hidden></span></button>
-    </nav>
     <div class="listwrap">
       <label class="search"><span id="icoSearch"></span><input id="q" placeholder="Search" aria-label="Search"></label>
       <div class="list" id="list"></div>
       <button class="fab" id="fab" aria-label="New"></button>
     </div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" data-tab="chats" aria-selected="true"><span class="ti" id="tiChats"></span>Chats<span class="badge" id="unreadAll" hidden></span></button>
+      <button role="tab" data-tab="updates" aria-selected="false"><span class="ti" id="tiUpd"></span>Updates</button>
+      <button role="tab" data-tab="calls" aria-selected="false"><span class="ti" id="tiCalls"></span>Calls<span class="badge" id="missedAll" hidden></span></button>
+      <button role="tab" data-tab="contacts" aria-selected="false"><span class="ti" id="tiCont"></span>Contacts</button>
+      <button role="tab" data-tab="settings" aria-selected="false"><span class="ti" id="tiSet"></span>Settings</button>
+    </nav>
   </section>
 
   <section class="pane" id="chatPane">
@@ -294,7 +309,11 @@ const P = {
   check:"M20 6L9 17l-5-5", checks:"M17 6L6 17l-5-5M23 6L12 17l-1.5-1.5", out:"M7 17L17 7M8 7h9v9", inn:"M17 7L7 17M16 17H7V8",
   image:"M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21", users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   text:"M4 7V4h16v3M9 20h6M12 4v16", x:"M18 6L6 18M6 6l12 12", play:"M6 4l14 8-14 8V4z", pause:"M6 4h4v16H6zM14 4h4v16h-4z", trash:"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
-  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7"
+  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7",
+  updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+  bell:"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0", wifi:"M5 12.6a11 11 0 0 1 14 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01M1.4 9a16 16 0 0 1 21.2 0",
+  user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", info:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01"
 };
 const ico = (n, extra="") => `<svg class="i" viewBox="0 0 24 24" ${extra}><path d="${P[n]}"/></svg>`;
 const endIco = `<svg class="i" viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="${P.phone}"/></svg>`;
@@ -515,12 +534,15 @@ function preview(m){
 
 /* =========================  STATE  ========================= */
 const api = DEMO ? makeDemo() : makeFire();
+const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, ...p}; })();
+function savePrefs(){ try{ localStorage.setItem("xappPrefs",JSON.stringify(PREFS)); }catch(e){} }
 const S = { me:null, users:{}, chats:[], statuses:[], calls:[], tab:"chats", peer:null, msgs:[], unsubMsgs:null, q:"", typing:null, seenStatus:new Set(), mediaCache:new Map(), lastUnread:{} };
 try{ JSON.parse(localStorage.getItem("xappSeen")||"[]").forEach(x=>S.seenStatus.add(x)); }catch(e){}
 
 /* static icons */
 $("#btnCam").innerHTML=ico("camera"); $("#btnMenu").innerHTML=ico("more"); $("#icoSearch").innerHTML=ico("search");
-$("#icoGal").innerHTML=ico("image"); $("#icoCamA").innerHTML=ico("camera"); $("#icoVid").innerHTML=ico("video");
+$("#icoGal").innerHTML=ico("image");
+$("#tiChats").innerHTML=ico("chat"); $("#tiUpd").innerHTML=ico("updates"); $("#tiCalls").innerHTML=ico("phone"); $("#tiCont").innerHTML=ico("users"); $("#tiSet").innerHTML=ico("settings"); $("#icoCamA").innerHTML=ico("camera"); $("#icoVid").innerHTML=ico("video");
 
 /* =========================  AUTH  ========================= */
 let signupMode=false;
@@ -565,18 +587,23 @@ function notifyNew(cs){
 }
 
 /* =========================  LIST PANE  ========================= */
-document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{ S.tab=b.dataset.tab; document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x===b)); renderList(); });
+function setTab(t){ S.tab=t; document.querySelectorAll(".tabs button").forEach(x=>x.setAttribute("aria-selected",x.dataset.tab===t)); $("#list").scrollTop=0; renderList(true); }
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
 $("#q").oninput=e=>{ S.q=e.target.value.toLowerCase(); renderList(); };
 $("#btnMenu").onclick=e=>{ e.stopPropagation(); $("#menu").hidden=!$("#menu").hidden; };
 document.addEventListener("click",()=>{ $("#menu").hidden=true; $("#attach").hidden=true; });
 $("#menu").onclick=e=>{ const a=e.target.dataset.act; if(!a) return;
-  if(a==="profile") openProfile(); if(a==="contacts") openContacts("chat"); if(a==="logout") api.logout(); if(a==="testcall") api.testIncoming(); };
+  if(a==="settings") setTab("settings"); if(a==="contacts") setTab("contacts"); if(a==="logout") api.logout(); if(a==="testcall") api.testIncoming(); };
 $("#btnCam").onclick=()=>$("#fStatus").click();
 $("#fab").onclick=()=>{ if(S.tab==="chats") openContacts("chat"); else if(S.tab==="calls") openContacts("call"); else openStatusText(); };
 
-function renderList(){
+function renderList(force){
   if(!S.me) return;
   const L=$("#list"), q=S.q;
+  if(S.tab==="settings" && L.dataset.shown==="settings" && !force) return;   // don't wipe the settings page on live updates
+  L.dataset.shown=S.tab;
+  $("#fab").hidden = S.tab==="contacts" || S.tab==="settings";
+  document.querySelector(".search").hidden = S.tab==="settings";
   const totalUnread=S.chats.reduce((a,c)=>a+(c["unread_"+S.me.uid]?1:0),0);
   $("#unreadAll").hidden=!totalUnread; $("#unreadAll").textContent=totalUnread;
   const missed=S.calls.filter(c=>c.callee===S.me.uid && !c.answeredAt && c.status!=="ringing" && c.createdAt>Date.now()-864e5).length;
@@ -617,8 +644,45 @@ function renderList(){
         <button class="callbtn" data-call="${esc(pid)}" data-video="${c.video?1:0}" aria-label="Call back">${ico(c.video?"video":"phone")}</button></div></div>`; }).join("");
     L.innerHTML = rows || `<div class="empty">No calls yet.<br>Voice and HD video calls to any contact.</div>`;
   }
+  if(S.tab==="contacts"){
+    const all=Object.values(S.users).filter(u=>u.uid!==S.me.uid).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+    const list=all.filter(u=>!q||(u.name||"").toLowerCase().includes(q)||(u.username||"").includes(q));
+    const on=list.filter(isOnline);
+    const row=u=>`<div class="row"><button style="display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}
+        <div class="mid"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>${isOnline(u)?'<span class="in">online</span>':esc(u.about||"@"+(u.username||""))}</span></div></div></button>
+      <button class="callbtn" data-call="${esc(u.uid)}" data-video="0" aria-label="Voice call ${esc(u.name)}">${ico("phone")}</button><button class="callbtn" data-call="${esc(u.uid)}" data-video="1" aria-label="Video call ${esc(u.name)}">${ico("video")}</button></div>`;
+    L.innerHTML = !all.length ? `<div class="empty">No contacts yet.<br>Everyone who installs Xapp and creates an account appears here automatically.</div>`
+      : (on.length?`<div class="sec">Online now · ${on.length}</div>${on.map(row).join("")}`:"") + `<div class="sec">All contacts · ${list.length}</div>${list.map(row).join("")||'<div class="empty">No match.</div>'}`;
+  }
+  if(S.tab==="settings") renderSettings(L);
 }
+
+function renderSettings(L){
+  const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
+  const item=(act,icon,title,sub,right="")=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b>${sub?`<small>${sub}</small>`:""}</span>${right}</button>`;
+  L.innerHTML=`<button class="me-card" data-set="profile">${avatar(u,"lg")}<span style="min-width:0"><b>${esc(u.name)}</b><small>${esc(u.about||"Tap to add an about line")}</small><br><small>@${esc(u.username||"")}</small></span></button>
+    <div class="sec">Account</div>
+    ${item("profile","user","Profile","Name, photo, about")}
+    <div class="sec">Calls</div>
+    ${item("speakerVoice","speaker","Voice calls on speaker","Start voice calls on the loudspeaker instead of the earpiece",sw("speakerVoice"))}
+    ${item("net","wifi","Test connection","Checks the relay server used for calls on 4G/5G")}
+    <div class="sec">Notifications</div>
+    ${item("sounds","bell","Message sounds","Short tone when a message arrives",sw("sounds"))}
+    ${"Notification" in window?item("alerts","bell","Pop-up alerts","Show messages when Xapp is in the background"):""}
+    <div class="sec">About</div>
+    ${item("about","info","Xapp",`<span id="appVer">Version ${esc(APP_VERSION)}</span> · ${Object.keys(S.users).length} people`)}
+    <div class="form" style="padding-top:8px"><button class="btn danger" data-set="logout">Sign out</button></div>`;
+  nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="Version "+i.version; } });
+}
+const APP_VERSION="1.0";
 $("#list").onclick=e=>{
+  const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
+    if(a==="profile") return openProfile();
+    if(a==="net") return netTest();
+    if(a==="logout") return api.logout();
+    if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
+    if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
+    return; }
   const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
   const c=e.target.closest("[data-call]"); if(c) return startCall(c.dataset.call, c.dataset.video==="1");
   const s=e.target.closest("[data-story]"); if(s){ if(s.dataset.mystatus && !s.dataset.story) return chooseStatus(); return openStory(s.dataset.story); }
@@ -649,22 +713,15 @@ function openProfile(){
     <div class="form"><div style="display:flex;justify-content:center"><button id="pAv" aria-label="Change photo" style="position:relative">${avatar(u,"xl")}<span class="send" style="position:absolute;right:0;bottom:0;width:40px;height:40px">${ico("camera")}</span></button></div>
     <label for="pName">Name</label><input id="pName" value="${esc(u.name)}">
     <label for="pAbout">About</label><input id="pAbout" value="${esc(u.about||"")}">
-    <p class="note">Username: <b>@${esc(u.username||"")}</b> · colleagues find you by name.</p>
-    <button class="btn" id="pSave">Save</button>
-    <button class="btn ghost" id="pNotif">Turn on message alerts</button>
-    <button class="btn ghost" id="pNet">Test connection</button>
-    
-    <button class="btn danger" id="pOut">Sign out</button></div>`;
+    <p class="note">Username: <b>@${esc(u.username||"")}</b> · people find you by name.</p>
+    <button class="btn" id="pSave">Save</button></div>`;
   sh.hidden=false;
   sh.onclick=e=>{ if(e.target.closest("[data-close]")) sh.hidden=true; };
   $("#pAv").onclick=()=>$("#fAvatar").click();
-  $("#pSave").onclick=async()=>{ await api.updateProfile({name:$("#pName").value.trim()||u.name, about:$("#pAbout").value.trim()}); S.me={...S.me,name:$("#pName").value.trim()||u.name,about:$("#pAbout").value.trim()}; toast("Profile saved"); sh.hidden=true; renderList(); };
-  $("#pNotif").onclick=()=>{ if(!("Notification" in window)) return toast("This browser has no notifications"); Notification.requestPermission().then(p=>toast(p==="granted"?"Message alerts are on":"Alerts blocked in browser settings")); };
-  $("#pOut").onclick=()=>api.logout();
-  $("#pNet").onclick=netTest;
+  $("#pSave").onclick=async()=>{ await api.updateProfile({name:$("#pName").value.trim()||u.name, about:$("#pAbout").value.trim()}); S.me={...S.me,name:$("#pName").value.trim()||u.name,about:$("#pAbout").value.trim()}; toast("Profile saved"); sh.hidden=true; renderList(true); };
 }
 $("#fAvatar").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(!f) return;
-  const d=await shrinkImage(f,256,.8); await api.updateProfile({photo:d}); S.me.photo=d; toast("Photo updated"); if(!$("#sheet").hidden) openProfile(); renderList(); };
+  const d=await shrinkImage(f,256,.8); await api.updateProfile({photo:d}); S.me.photo=d; toast("Photo updated"); if(!$("#sheet").hidden) openProfile(); renderList(true); };
 
 /* =========================  CHAT  ========================= */
 function openChat(uid){
@@ -765,7 +822,7 @@ $("#fStatus").onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; 
   st.innerHTML=`<div class="hd"><button class="ibtn" id="sx" aria-label="Cancel">${ico("x")}</button></div><div class="body"><img src="${d}" alt=""></div>
     <div class="composer" style="background:#000"><div class="field"><textarea id="scap" rows="1" placeholder="Add a caption" aria-label="Caption"></textarea></div><button class="send" id="spost" aria-label="Post status">${ico("send")}</button></div>`;
   st.hidden=false; $("#sx").onclick=()=>st.hidden=true;
-  $("#spost").onclick=async()=>{ st.hidden=true; toast("Posting…"); try{ const id=await api.putMedia(d); await api.postStatus({type:"image",mediaId:id,text:$("#scap").value.trim()}); toast("Status posted"); S.tab="updates"; document.querySelector('[data-tab="updates"]').click(); }catch(err){ toast("Could not post status"); } };
+  $("#spost").onclick=async()=>{ st.hidden=true; toast("Posting…"); try{ const id=await api.putMedia(d); await api.postStatus({type:"image",mediaId:id,text:$("#scap").value.trim()}); toast("Status posted"); S.tab="updates"; setTab("updates"); }catch(err){ toast("Could not post status"); } };
 };
 function openStatusText(){
   const cols=["#ff6a13","#0b0b0c","#26262a","#b8460b","#57534e"]; let ci=0; const st=$("#story");
@@ -775,7 +832,7 @@ function openStatusText(){
   $("#sc").onclick=()=>{ ci=(ci+1)%cols.length; paint(); };
   $("#sx").onclick=()=>{ st.hidden=true; st.style.background=""; };
   $("#spost").onclick=async()=>{ const t=$("#stxt").value.trim(); if(!t) return toast("Type something first"); st.hidden=true; st.style.background="";
-    await api.postStatus({type:"text",text:t,bg:cols[ci]}); toast("Status posted"); document.querySelector('[data-tab="updates"]').click(); };
+    await api.postStatus({type:"text",text:t,bg:cols[ci]}); toast("Status posted"); setTab("updates"); };
 }
 function openStory(uid){
   const list=S.statuses.filter(s=>s.uid===uid&&s.expiresAt>Date.now()).sort((a,b)=>a.at-b.at); if(!list.length) return;
@@ -835,7 +892,7 @@ function tone(pattern){ // pattern: [[freq, ms],...] repeating
   loop(); window._toneStop=()=>{ stop=true; };
 }
 function stopTone(){ window._toneStop&&window._toneStop(); window._toneStop=null; }
-function beep(){ try{ const ac=AC(), o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=880; g.gain.value=.08; o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.12); }catch(e){} }
+function beep(){ if(!PREFS.sounds) return; try{ const ac=AC(), o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=880; g.gain.value=.08; o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.12); }catch(e){} }
 
 async function getMedia(video){
   return navigator.mediaDevices.getUserMedia({
@@ -858,7 +915,7 @@ function attachRemote(s){
 }
 function newSession(peer, video, outgoing){
   const sess={peer,video,outgoing,unsubs:[],pc:null,local:null,remote:new MediaStream(),types:new Set(),startedAt:0,muted:false,camOff:false,front:true,closed:false,setStatus:()=>{}};
-  sess.speaker=!!video; sess.connected=api.demo;
+  sess.speaker=!!video || PREFS.speakerVoice; sess.connected=api.demo;
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
       if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent="Connecting…"; },1000); };
@@ -935,7 +992,7 @@ function onBack(){
   if(call) return; if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
   if(!$("#sheet").hidden){ $("#sheet").hidden=true; return; }
   if(S.peer&&innerWidth<900){ closeChat(); return; }
-  if(S.tab!=="chats"){ document.querySelector('[data-tab="chats"]').click(); return; }
+  if(S.tab!=="chats"){ setTab("chats"); return; }
   nat("App","minimizeApp");
 }
 try{ const C=window.Capacitor; if(C&&C.getPlatform&&C.getPlatform()!=="web"){
