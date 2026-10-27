@@ -376,7 +376,8 @@ function makeFire(){
       const c = await auth.createUserWithEmailAndPassword(mail(u),p);
       await C("users").doc(c.user.uid).set({uid:c.user.uid, username:u.trim().toLowerCase(), name:name||u, about:"Hey there! I am using Xapp", lastSeen:Date.now()});
     },
-    logout(){ return auth.signOut(); },
+    logout(){ nat("Background","signOut"); return auth.signOut(); },
+    emailFor(u){ return mail(u); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
     saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
@@ -499,6 +500,7 @@ function makeDemo(){
     async login(u,p,name){ const s={uid:"me",username:u.toLowerCase(),name:name||u,about:"Hey there! I am using Xapp",lastSeen:Date.now()};
       try{ localStorage.setItem("xappDemoMe",JSON.stringify(s)); }catch(e){} me="me"; seed(); D.users.unshift(s); this._cb(s); },
     signup(u,p,name){ return this.login(u,p,name); },
+    emailFor(){ return null; },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
     ping(){}, saveDiag(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
@@ -561,6 +563,7 @@ $("#loginForm").onsubmit=async e=>{
   try{
     const u=$("#lgUser").value, p=$("#lgPass").value, n=$("#lgName").value.trim();
     if(signupMode) await api.signup(u,p,n||u); else await api.login(u,p,n);
+    bgSignIn(u,p);
   }catch(err){
     const c=err&&err.code||""; $("#lgErr").textContent =
       c.includes("invalid-credential")||c.includes("wrong-password")||c.includes("user-not-found") ? "Wrong username or password." :
@@ -581,6 +584,7 @@ api.onAuth(user=>{
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); renderList(); }));
   subs.push(api.watchIncoming(incoming, gone));
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
+  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
   api.ping(); clearInterval(S.pingT); S.pingT=setInterval(()=>{ if(!document.hidden) api.ping(); },60000);
 });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ api.ping(); if(S.peer) api.markRead(S.peer); } });
@@ -618,6 +622,7 @@ function renderList(force){
   $("#fab").innerHTML = S.tab==="chats"?ico("chat"):S.tab==="calls"?ico("phone"):ico("text");
   $("#fab").setAttribute("aria-label", S.tab==="chats"?"New chat":S.tab==="calls"?"New call":"Text status");
 
+  const bgBanner = isNative()&&!api.demo&&S.bg&&!S.bg.signedIn ? `<button class="set" data-set="bgOn" style="background:rgba(255,106,19,.12)"><span class="si" style="color:var(--orange)">${ico("phone")}</span><span class="st"><b>Turn on background calls</b><small>So calls ring when Xapp is closed</small></span></button>` : "";
   if(S.tab==="chats"){
     const rows=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const u=S.users[peerOf(c)]||{uid:peerOf(c),name:"Contact"};
       if(q && !(u.name||"").toLowerCase().includes(q) && !(c.last||"").toLowerCase().includes(q)) return "";
@@ -625,7 +630,7 @@ function renderList(force){
       const tick=c.lastFrom===S.me.uid?ico("checks"):"";
       return `<button class="row" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
         <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`; }).join("");
-    L.innerHTML = rows || `<div class="empty">No chats yet.<br>Tap the orange button to message a colleague.</div>`;
+    L.innerHTML = bgBanner + (rows || `<div class="empty">No chats yet.<br>Tap the orange button to message a colleague.</div>`);
   }
   if(S.tab==="updates"){
     const mine=S.statuses.filter(s=>s.uid===S.me.uid&&s.expiresAt>Date.now());
@@ -664,6 +669,16 @@ function renderList(force){
   if(S.tab==="settings") renderSettings(L);
 }
 
+function bgSection(){
+  const b=S.bg||{}, ok=v=>v?'<span class="in" style="font-weight:600">On</span>':'<span class="miss" style="font-weight:600">Off</span>';
+  const item=(act,icon,title,sub,right)=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b><small>${sub}</small></span>${right||""}</button>`;
+  const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted;
+  return `<div class="sec">Ring when Xapp is closed${S.bg?(allOk?" · ready":" · needs setup"):""}</div>
+    ${item("bgOn","phone","Background calls",b.signedIn?"Calls ring with the app closed":"Tap and enter your password once",ok(b.signedIn))}
+    ${item("bgNotif","bell","Notifications",b.notifications?"Allowed":"Tap to allow ringing notifications",ok(b.notifications))}
+    ${item("bgBattery","settings","No battery restriction",b.batteryUnrestricted?"Xapp may run in the background":"Tap and choose Allow",ok(b.batteryUnrestricted))}
+    ${item("bgAuto","wifi","Auto-launch"+(b.manufacturer?" ("+esc(b.manufacturer)+")":""),"Honor, Huawei, Xiaomi, Oppo, Vivo: allow Xapp to auto-launch and run in background")}`;
+}
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
   const item=(act,icon,title,sub,right="")=>`<button class="set" data-set="${act}"><span class="si">${ico(icon)}</span><span class="st"><b>${title}</b>${sub?`<small>${sub}</small>`:""}</span>${right}</button>`;
@@ -673,6 +688,7 @@ function renderSettings(L){
     <div class="sec">Calls</div>
     ${item("speakerVoice","speaker","Voice calls on speaker","Start voice calls on the loudspeaker instead of the earpiece",sw("speakerVoice"))}
     ${item("net","wifi","Test connection","Checks the relay server used for calls on 4G/5G")}
+    ${isNative()&&!api.demo?bgSection():""}
     <div class="sec">Notifications</div>
     ${item("sounds","bell","Message sounds","Short tone when a message arrives",sw("sounds"))}
     ${"Notification" in window?item("alerts","bell","Pop-up alerts","Show messages when Xapp is in the background"):""}
@@ -686,9 +702,13 @@ $("#list").onclick=e=>{
   const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
     if(a==="profile") return openProfile();
     if(a==="net") return netTest();
+    if(a==="bgOn") return (S.bg&&S.bg.signedIn)?toast("Background calls are already on"):bgPasswordSheet();
+    if(a==="bgNotif") return nat("Background","openNotificationSettings");
+    if(a==="bgBattery") return nat("Background","requestBattery");
+    if(a==="bgAuto") return nat("Background","openAutostart");
     if(a==="logout") return api.logout();
     if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
-    if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
+    if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); if(a==="sounds") nat("Background","setMessageNotifications",{on:PREFS.sounds}); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
     return; }
   const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
   const c=e.target.closest("[data-call]"); if(c) return startCall(c.dataset.call, c.dataset.video==="1");
@@ -916,11 +936,53 @@ async function getMedia(video){
     video: video ? {width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30},facingMode:"user"} : false });
 }
 /* native bridge (APK): audio routing + back button */
-function nat(plugin, method, opts={}){
+function nat(plugin, method, opts={}, raw=false){
+  let p;
   try{ const C=window.Capacitor; if(!C||!C.getPlatform||C.getPlatform()==="web") return Promise.resolve();
-    if(C.Plugins&&C.Plugins[plugin]&&C.Plugins[plugin][method]) return Promise.resolve(C.Plugins[plugin][method](opts)).catch(()=>{});
-    if(C.nativePromise) return C.nativePromise(plugin,method,opts).catch(()=>{}); }catch(e){}
-  return Promise.resolve();
+    if(C.Plugins&&C.Plugins[plugin]&&C.Plugins[plugin][method]) p=Promise.resolve(C.Plugins[plugin][method](opts));
+    else if(C.nativePromise) p=C.nativePromise(plugin,method,opts); }catch(e){ p=Promise.reject(e); }
+  if(!p) return Promise.resolve();
+  return raw ? p : p.catch(()=>{});
+}
+function isNative(){ try{ const C=window.Capacitor; return !!(C&&C.getPlatform&&C.getPlatform()!=="web"); }catch(e){ return false; } }
+function natOn(plugin, event, cb){
+  try{ const C=window.Capacitor; if(!isNative()) return;
+    if(C.Plugins&&C.Plugins[plugin]&&C.Plugins[plugin].addListener) C.Plugins[plugin].addListener(event,cb);
+    else if(C.nativeCallback) C.nativeCallback(plugin,"addListener",{eventName:event},cb); }catch(e){}
+}
+/* Background ringing: the native service signs in with the same account so it can ring with the app closed */
+S.bg=null;
+async function bgRefresh(){ if(!isNative()) return; try{ S.bg=await nat("Background","status"); }catch(e){} if(S.tab==="settings") renderList(true); else renderList(); }
+async function bgSignIn(u,p){
+  if(!isNative()||api.demo) return;
+  try{ await nat("Background","signIn",{email:api.emailFor(u), password:p, options:FIREBASE_CONFIG},true); toast("Background calls are on"); }
+  catch(e){ toast("Background calls could not start: "+((e&&e.message)||"check the password")); }
+  bgRefresh();
+}
+function bgPasswordSheet(){
+  const sh=$("#sheet");
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Background calls</b></div></header>
+    <form class="form" id="bgForm"><p class="note">Enter your Xapp password once so calls can ring when Xapp is closed.</p>
+    <label for="bgPass">Password for @${esc(S.me.username||"")}</label><input id="bgPass" type="password" autocomplete="current-password" required minlength="6">
+    <button class="btn" type="submit">Turn on</button></form>`;
+  sh.hidden=false; sh.onclick=e=>{ if(e.target.closest("[data-close]")) sh.hidden=true; };
+  $("#bgForm").onsubmit=async e=>{ e.preventDefault(); const pw=$("#bgPass").value; sh.hidden=true; await bgSignIn(S.me.username, pw); };
+}
+/* Answer / Decline tapped on the ringing notification */
+S.pendingAction=null;
+function takeCallAction(a){ if(!a||!a.id) return; S.pendingAction={...a, at:Date.now()}; applyCallAction(); }
+function applyCallAction(){
+  const a=S.pendingAction; if(!a||Date.now()-a.at>60000) return;
+  if(call && call.inc && call.inc.id===a.id && !call.startedAt){
+    S.pendingAction=null;
+    if(a.action==="answer") setTimeout(answer,150);
+    else if(a.action==="decline"){ api.declineCall(a.id); call.close("declined"); }
+  }
+}
+if(isNative()){
+  natOn("Background","callAction",takeCallAction);
+  natOn("Background","hangup",()=>{ if(call) call.hangup(); });
+  natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); });
 }
 function route(s){ nat("AudioRoute","set",{active:true,speaker:!!s.speaker}); }
 function attachRemote(s){
@@ -945,12 +1007,13 @@ function newSession(peer, video, outgoing){
     try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
     api.saveDiag("diagCall",d); };
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
+    nat("Background","callState",{active:true, peer:(S.users[peer]||{}).name||"Xapp", video:!!video, startedAt:Date.now()});
     if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
       clearInterval(sess.tick); sess.log("give-up 25s"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
       toast("Call could not connect. Check Settings → Test connection."); setTimeout(()=>sess.hangup(),4000); },25000);
     sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
       if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent=sess.connAt?"Reconnecting…":"Connecting…"; },1000); };
-  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
+  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
@@ -990,7 +1053,9 @@ function incoming(c){
   if(call && (call.id===c.id || (call.inc && call.inc.id===c.id))) return;   // same call reported again
   if(call){ api.declineCall(c.id); return; }
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
-  tone([[523,180],[659,180],[784,260],[0,900]]);
+  const nativeRings = document.hidden && S.bg && S.bg.signedIn;
+  if(!nativeRings) tone([[523,180],[659,180],[784,260],[0,900]]);
+  applyCallAction();
   if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ const u=S.users[c.caller]; new Notification(`${u?u.name:"Xapp"} is calling`,{body:c.video?"Video call":"Voice call",tag:"call"}); }catch(e){} }
 }
 function gone(id){ if(call && call.inc && call.inc.id===id && !call.startedAt && !call.answering){ call.log("caller cancelled"); call.close("missed"); } }

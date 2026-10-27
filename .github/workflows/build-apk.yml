@@ -56,35 +56,8 @@ jobs:
             --splashBackgroundColor '#0b0b0c' --splashBackgroundColorDark '#0b0b0c'
           cp native/*.java android/app/src/main/java/qa/fitx/xapp/
 
-      - name: Camera / microphone permissions, version, signing
-        run: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.microphone" android:required="false" />\n</manifest>#' "$M"
-          sed -i 's#android:name=".MainActivity"#android:name=".MainActivity"\n            android:screenOrientation="portrait"#' "$M"
-          cat >> android/app/build.gradle <<'G'
-
-          // ---- Xapp: version from the build number, signed with the Xapp key ----
-          android {
-              defaultConfig {
-                  versionCode Integer.parseInt(System.getenv("GITHUB_RUN_NUMBER") ?: "1")
-                  versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
-              }
-              signingConfigs {
-                  xapp {
-                      storeFile file(System.getenv("XAPP_KEYSTORE") ?: "none.keystore")
-                      storePassword System.getenv("XAPP_KEYSTORE_PASSWORD") ?: ""
-                      keyAlias "xapp"
-                      keyPassword System.getenv("XAPP_KEYSTORE_PASSWORD") ?: ""
-                  }
-              }
-              buildTypes {
-                  release {
-                      if (System.getenv("XAPP_KEYSTORE")) { signingConfig signingConfigs.xapp }
-                  }
-              }
-          }
-          G
-          grep -c RECORD_AUDIO "$M"
+      - name: Permissions, background service, Firebase, version, signing
+        run: python3 scripts/patch_android.py
 
       - name: Signing key (XAPP_ALL secret)
         env:
