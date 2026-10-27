@@ -10,6 +10,10 @@ import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.ListenerRegistration;
+import android.app.NotificationManager;
+import android.os.Build;
+import android.os.PowerManager;
+import androidx.core.app.NotificationManagerCompat;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -51,13 +55,23 @@ final class NativeWatcher {
         watchingUid = u.getUid();
         final String uid = watchingUid;
         final FirebaseFirestore fs = FirebaseFirestore.getInstance(fa);
+        Map<String, Object> st = new HashMap<>();
+        st.put("startedAt", System.currentTimeMillis()); st.put("state", "listening");
+        st.put("device", Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE);
+        st.put("notifications", NotificationManagerCompat.from(app).areNotificationsEnabled());
+        PowerManager pm = (PowerManager) app.getSystemService(Context.POWER_SERVICE);
+        st.put("batteryUnrestricted", pm != null && pm.isIgnoringBatteryOptimizations(app.getPackageName()));
+        if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = app.getSystemService(NotificationManager.class); st.put("fullScreenAllowed", nm != null && nm.canUseFullScreenIntent()); }
+        diag(fs, uid, st);
 
         callReg = fs.collection("calls").whereEqualTo("callee", uid).whereEqualTo("status", "ringing")
             .addSnapshotListener((snap, err) -> {
+                if (err != null) { Map<String, Object> e = new HashMap<>(); e.put("callListenerError", err.getMessage()); e.put("errAt", System.currentTimeMillis()); diag(fs, uid, e); }
                 if (snap == null) return;
                 for (DocumentChange dc : snap.getDocumentChanges()) {
                     DocumentSnapshot d = dc.getDocument();
                     final String id = d.getId();
+                    if (dc.getType() == DocumentChange.Type.ADDED) { Map<String, Object> e = new HashMap<>(); e.put("lastCallSeenAt", System.currentTimeMillis()); e.put("inForeground", MainActivity.inForeground); diag(fs, uid, e); }
                     final boolean video = Boolean.TRUE.equals(d.getBoolean("video"));
                     if (dc.getType() == DocumentChange.Type.ADDED) {
                         Long created = d.getLong("createdAt");
@@ -65,7 +79,10 @@ final class NativeWatcher {
                         final String caller = str(d.get("caller"), "");
                         withName(fs, caller, name -> {
                             ringing.put(id, new String[] { name, video ? "1" : "0" });
-                            if (!MainActivity.inForeground) CallNotifications.showIncoming(app, id, name, video);
+                            if (!MainActivity.inForeground) {
+                                CallNotifications.showIncoming(app, id, name, video);
+                                Map<String, Object> e = new HashMap<>(); e.put("lastRingShownAt", System.currentTimeMillis()); diag(fs, uid, e);
+                            }
                         });
                     } else if (dc.getType() == DocumentChange.Type.REMOVED) {
                         final String[] r = ringing.remove(id);
@@ -104,6 +121,15 @@ final class NativeWatcher {
         fs.collection("users").document(uid).get()
             .addOnSuccessListener(s -> { String v = s != null ? str(s.get("name"), str(s.get("username"), "Xapp")) : "Xapp"; names.put(uid, v); cb.got(v); })
             .addOnFailureListener(e -> cb.got("Xapp"));
+    }
+
+    /** Writes the service state into users/{uid}.diagBg (read back by the diagnostics check). */
+    static void diag(FirebaseFirestore fs, String uid, Map<String, Object> fields) {
+        try {
+            Map<String, Object> up = new HashMap<>();
+            for (Map.Entry<String, Object> e : fields.entrySet()) up.put("diagBg." + e.getKey(), e.getValue());
+            fs.collection("users").document(uid).update(up);
+        } catch (Exception ignored) {}
     }
 
     static synchronized void stop() {

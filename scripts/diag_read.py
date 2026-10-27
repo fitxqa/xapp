@@ -35,7 +35,15 @@ try:
             age = int((now - c.get("at", 0)) / 60000)
             keep = {k: c.get(k) for k in ("role","video","end","connected","secs","relays","local","remote","errs","pairs","selected","audioInBytes","audioOutBytes","app","statsErr")}
             print(f"::notice title=CALL {who} {age} min ago::{json.dumps(keep)} · EVENTS: {' / '.join(c.get('ev', []))}")
-        if not n and not c: print(f"::notice title={who}::no diagnostics yet")
+        ap = f.get("diagApp")
+        if ap:
+            print(f"::notice title=APP {who} {int((now - ap.get('at', 0)) / 60000)} min ago::" + json.dumps({k: v for k, v in ap.items() if k != 'at'}))
+        bg = f.get("diagBg")
+        if bg:
+            ago = lambda k: (f"{int((now - bg[k]) / 60000)} min ago" if isinstance(bg.get(k), (int, float)) else "never")
+            rest = {k: v for k, v in bg.items() if not k.endswith("At")}
+            print(f"::notice title=BACKGROUND {who}::service started {ago('startedAt')} · last call seen {ago('lastCallSeenAt')} · last ring shown {ago('lastRingShownAt')} · stopped {ago('stoppedAt')} · error {ago('errAt')} · " + json.dumps(rest))
+        if not n and not c and not ap and not bg: print(f"::notice title={who}::no diagnostics yet")
 finally:
     try: post(f"https://identitytoolkit.googleapis.com/v1/accounts:delete?key={KEY}", {"idToken": tok})
     except Exception as e: print("cleanup:", e)

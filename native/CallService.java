@@ -63,7 +63,16 @@ public class CallService extends Service {
         return START_STICKY;
     }
 
-    @Override public void onDestroy() { running = false; NativeWatcher.stop(); super.onDestroy(); }
+    @Override public void onDestroy() {
+        running = false;
+        try {
+            com.google.firebase.FirebaseApp fa = NativeWatcher.app(this);
+            com.google.firebase.auth.FirebaseUser u = fa == null ? null : com.google.firebase.auth.FirebaseAuth.getInstance(fa).getCurrentUser();
+            if (u != null) { java.util.Map<String, Object> e = new java.util.HashMap<>(); e.put("stoppedAt", System.currentTimeMillis()); e.put("state", "stopped");
+                NativeWatcher.diag(com.google.firebase.firestore.FirebaseFirestore.getInstance(fa), u.getUid(), e); }
+        } catch (Exception ignored) {}
+        NativeWatcher.stop(); super.onDestroy();
+    }
     @Override public IBinder onBind(Intent intent) { return null; }
 
     private void ensureChannel() {

@@ -952,7 +952,9 @@ function natOn(plugin, event, cb){
 }
 /* Background ringing: the native service signs in with the same account so it can ring with the app closed */
 S.bg=null;
-async function bgRefresh(){ if(!isNative()) return; try{ S.bg=await nat("Background","status"); }catch(e){} if(S.tab==="settings") renderList(true); else renderList(); }
+async function bgRefresh(){ if(!isNative()) return; try{ S.bg=await nat("Background","status"); }catch(e){}
+  if(S.bg){ let v=""; try{ const i=await nat("App","getInfo"); v=i&&i.version; }catch(e){} api.saveDiag("diagApp",{at:Date.now(), app:v, ...S.bg}); }
+  if(S.tab==="settings") renderList(true); else renderList(); }
 async function bgSignIn(u,p){
   if(!isNative()||api.demo) return;
   try{ await nat("Background","signIn",{email:api.emailFor(u), password:p, options:FIREBASE_CONFIG},true); toast("Background calls are on"); }
