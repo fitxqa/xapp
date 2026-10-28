@@ -192,6 +192,18 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .day{align-self:center;background:var(--raise);color:var(--mute);font-size:12px;font-weight:600;padding:5px 12px;border-radius:8px;margin:10px 0 6px}
 .msg{max-width:min(78%,520px);padding:6px 9px 6px 10px;border-radius:12px;background:var(--in);align-self:flex-start;box-shadow:0 1px 1px rgba(0,0,0,.12);position:relative;word-wrap:break-word;overflow-wrap:anywhere}
 .msg.me{align-self:flex-end;background:var(--out)}
+.msg{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;transition:filter .12s, transform .12s}
+.msg.sel{filter:brightness(.88);transform:scale(.98)}
+.msg.del{opacity:.85}
+.gone{display:inline-flex;align-items:center;gap:6px;font-style:italic;color:var(--mute)}
+.gone svg.i{width:15px;height:15px}
+.pop{position:fixed;inset:0;z-index:72}
+.popbg{position:absolute;inset:0;background:rgba(0,0,0,.4);opacity:0;transition:opacity .18s}
+.popcard{position:absolute;left:0;right:0;bottom:0;background:var(--panel);border-radius:22px 22px 0 0;padding:6px 0 calc(env(safe-area-inset-bottom,0px) + 6px);transform:translateY(100%);transition:transform .2s ease;box-shadow:0 -10px 30px rgba(0,0,0,.25);max-width:560px;margin:0 auto}
+.pop.open .popbg{opacity:1}.pop.open .popcard{transform:none}
+.grip{width:38px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 2px}
+@media (prefers-reduced-motion:reduce){.popbg,.popcard{transition:none}}
+.msgprev{margin:14px 20px 4px;padding:12px 14px;border-radius:12px;background:var(--raise);color:var(--fg);font-size:14.5px;line-height:1.4;word-break:break-word}
 .msg.first{margin-top:6px}
 .msg .meta{float:right;display:inline-flex;gap:3px;align-items:center;font-size:11px;color:var(--mute);margin:8px 0 -4px 10px;font-variant-numeric:tabular-nums}
 .msg .meta svg.i{width:16px;height:16px}
@@ -333,6 +345,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 #call .pulse{animation:ringpulse 1.6s infinite}
 @keyframes ringpulse{0%{box-shadow:0 0 0 0 rgba(255,106,19,.6)}100%{box-shadow:0 0 0 30px rgba(255,106,19,0)}}
 
+.pop:not([hidden]) ~ .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 320px)}
 #call:not([hidden]) ~ .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 190px)}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);background:#fff;color:#0b0b0c;padding:10px 16px;border-radius:20px;font-weight:600;font-size:14px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:90vw}
 .menu{position:absolute;right:10px;top:56px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;min-width:200px;z-index:30;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.35)}
@@ -418,6 +431,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 <div id="story" class="story" hidden></div>
 <div id="scan" class="scan" hidden></div>
 <div id="viewer" class="viewer" hidden></div>
+<div id="pop" class="pop" hidden></div>
 <section id="call" hidden></section>
 <div class="toast" id="toast" hidden></div>
 

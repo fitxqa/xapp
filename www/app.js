@@ -137,6 +137,12 @@ function makeFire(){
       await ref.set({members:[me,peer].sort(), last:preview(m), lastAt:Date.now(), lastFrom:me, ["unread_"+peer]:firebase.firestore.FieldValue.increment(1)},{merge:true});
       await ref.collection("messages").add({...m, from:me, at:Date.now(), read:false});
     },
+    hideMessage(peer, id){ return C("chats").doc(chatId(me,peer)).collection("messages").doc(id).update({hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)}); },
+    async deleteForAll(peer, m, isLast){
+      const ref=C("chats").doc(chatId(me,peer));
+      await ref.collection("messages").doc(m.id).update({type:"deleted", text:"", mediaId:null, lat:null, lng:null, deletedAt:Date.now()});
+      if(isLast) await ref.set({last:"🚫 This message was deleted"},{merge:true});
+    },
     async markRead(peer){
       const cid = chatId(me,peer), ref = C("chats").doc(cid);
       ref.set({members:[me,peer].sort(), ["unread_"+me]:0},{merge:true}).catch(()=>{});
@@ -265,6 +271,8 @@ function makeDemo(){
       setTimeout(()=>{ D.msgs[cid].forEach(x=>{ if(x.from===me) x.read=true; }); emit("m:"+cid,D.msgs[cid]); emit("typing",peer); },1500);
       setTimeout(()=>{ D.msgs[cid].push({id:Math.random().toString(36).slice(2),from:peer,type:"text",text:replies[Math.floor(Math.random()*replies.length)],at:Date.now(),read:false});
         if(S.peer!==peer) D.unread[cid]=(D.unread[cid]||0)+1; emit("m:"+cid,D.msgs[cid]); emit("chats",chats()); emit("typing",null); },3800); },
+    async hideMessage(peer,id){ const cid=chatId(me,peer); (D.msgs[cid]||[]).forEach(x=>{ if(x.id===id) x.hiddenFor=[...(x.hiddenFor||[]),me]; }); emit("m:"+cid,D.msgs[cid]); },
+    async deleteForAll(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]||[]).forEach(x=>{ if(x.id===m.id){ x.type="deleted"; x.text=""; x.mediaId=null; } }); emit("m:"+cid,D.msgs[cid]); emit("chats",chats()); },
     async markRead(peer){ const cid=chatId(me,peer); D.unread[cid]=0; (D.msgs[cid]||[]).forEach(x=>{ if(x.from===peer) x.read=true; }); emit("chats",chats()); },
     async putMedia(d){ const id="m"+Math.random().toString(36).slice(2); D.media[id]=d; return id; },
     async getMedia(id){ return D.media[id]; },
@@ -294,6 +302,7 @@ function queueIce(pc, sess){
 }
 function preview(m){
   if(!m) return "";
+  if(m.type==="deleted") return "🚫 This message was deleted";
   if(m.type==="location") return "📍 "+(m.text||"Location");
   if(m.type==="image"&&m.scan) return "📄 "+(m.text||"Scanned document");
   return {image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] ? ({image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] + (m.text?" · "+m.text:"")) : (m.text||"");
@@ -651,22 +660,59 @@ function renderChatHead(){
 function renderMsgs(){
   const W=$("#wall"), atBottom=W.scrollHeight-W.scrollTop-W.clientHeight<120; let html="", lastDay="", lastFrom="";
   if(!S.msgs.length) html=`<div class="day">Messages and calls are private to the two of you</div>`;
-  S.msgs.forEach(m=>{ const d=dayLabel(m.at); if(d!==lastDay){ html+=`<div class="day">${d}</div>`; lastDay=d; lastFrom=""; }
+  S.msgs.filter(m=>!(m.hiddenFor||[]).includes(S.me.uid)).forEach(m=>{ const d=dayLabel(m.at); if(d!==lastDay){ html+=`<div class="day">${d}</div>`; lastDay=d; lastFrom=""; }
     const mine=m.from===S.me.uid, first=m.from!==lastFrom; lastFrom=m.from;
     const meta=`<span class="meta">${hm(m.at)}${mine?`<span class="${m.read?"read":""}">${ico(m.read?"checks":"check")}</span>`:""}</span>`;
     let body="";
     const cachedSrc = m.mediaId && S.mediaCache.has(m.mediaId) ? ` src="${S.mediaCache.get(m.mediaId)}"` : "";
-    if(m.type==="image") body=`<img data-media="${esc(m.mediaId)}"${cachedSrc} alt="Photo">${m.text?`<div class="cap">${esc(m.text)}</div>`:""}`;
+    if(m.type==="deleted") body=`<span class="gone">${ico("x")}${mine?"You deleted this message":"This message was deleted"}</span>`;
+    else if(m.type==="image") body=`<img data-media="${esc(m.mediaId)}"${cachedSrc} alt="Photo">${m.text?`<div class="cap">${esc(m.text)}</div>`:""}`;
     else if(m.type==="video") body=`<video data-media="${esc(m.mediaId)}"${cachedSrc} controls playsinline preload="metadata"></video>${m.text?`<div class="cap">${esc(m.text)}</div>`:""}`;
     else if(m.type==="location") body=locationBubble(m);
     else if(m.type==="audio") body=`<div class="audio" data-audio="${esc(m.mediaId)}"><button class="play" aria-label="Play voice message">${ico("play")}</button><div class="track"><i></i></div><small>${dur(m.dur||0)}</small></div>`;
     else body=esc(m.text).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:var(--orange-2)">$1</a>');
-    html+=`<div class="msg ${mine?"me":""} ${first?"first":""}">${body}${meta}</div>`; });
+    html+=`<div class="msg ${mine?"me":""} ${first?"first":""}${m.type==="deleted"?" del":""}" data-mid="${esc(m.id)}">${body}${meta}</div>`; });
   W.innerHTML=html;
   W.querySelectorAll("[data-media]:not([src])").forEach(async el=>{ try{ el.src=await media(el.dataset.media); }catch(e){ el.alt="Media unavailable"; } });
   if(atBottom||W.dataset.peer!==S.peer){ W.scrollTop=W.scrollHeight; W.dataset.peer=S.peer; }
 }
 async function media(id){ if(S.mediaCache.has(id)) return S.mediaCache.get(id); const d=await api.getMedia(id); S.mediaCache.set(id,d); return d; }
+/* Long-press a message: Copy · Delete for me · Delete for everyone */
+(function(){
+  const W=$("#wall"); let t=null, sx=0, sy=0, fired=false;
+  W.addEventListener("pointerdown",e=>{ const el=e.target.closest(".msg[data-mid]"); if(!el||e.target.closest("a,button,video")) return;
+    fired=false; sx=e.clientX; sy=e.clientY; clearTimeout(t);
+    t=setTimeout(()=>{ fired=true; try{ navigator.vibrate&&navigator.vibrate(18); }catch(_){} msgMenu(el.dataset.mid); },450); });
+  const cancel=e=>{ if(t&&(!e||e.type!=="pointermove"||Math.hypot(e.clientX-sx,e.clientY-sy)>10)){ clearTimeout(t); t=null; } };
+  ["pointerup","pointercancel","pointerleave"].forEach(ev=>W.addEventListener(ev,cancel)); W.addEventListener("pointermove",cancel);
+  W.addEventListener("contextmenu",e=>{ const el=e.target.closest(".msg[data-mid]"); if(el){ e.preventDefault(); if(!fired) msgMenu(el.dataset.mid); } });
+  W.addEventListener("click",e=>{ if(fired){ e.stopPropagation(); e.preventDefault(); fired=false; } },true);   // the long-press must not also open a photo
+})();
+function msgMenu(id){
+  const m=S.msgs.find(x=>x.id===id); if(!m) return;
+  const mine=m.from===S.me.uid, gone=m.type==="deleted", peer=S.peer;
+  const canAll = mine && !gone && Date.now()-m.at < 48*3600e3;
+  const el=document.querySelector(`.msg[data-mid="${CSS.escape(id)}"]`); if(el) el.classList.add("sel");
+  const sh=$("#pop");
+  sh.innerHTML=`<div class="popbg" data-close></div><div class="popcard" role="dialog" aria-label="Message options"><div class="grip"></div>
+    <div class="msgprev">${gone?(mine?"You deleted this message":"This message was deleted"):esc(preview(m)).slice(0,160)}</div>
+    <div class="acts">
+      ${m.type==="text"&&m.text?`<button data-a="copy">${ico("checks")}Copy text</button>`:""}
+      <button data-a="me" class="del">${ico("trash")}Delete for me</button>
+      ${canAll?`<button data-a="all" class="del">${ico("trash")}Delete for everyone</button>`:""}
+    </div>
+    ${mine&&!gone&&!canAll?'<p class="note" style="padding:0 20px 8px">Delete for everyone is available for 2 days after sending.</p>':""}
+    <div class="acts" style="padding-top:0"><button data-close style="justify-content:center;color:var(--mute)">Cancel</button></div></div>`;
+  sh.hidden=false; requestAnimationFrame(()=>sh.classList.add("open"));
+  const done=()=>{ sh.classList.remove("open"); setTimeout(()=>{ sh.hidden=true; sh.innerHTML=""; },180); if(el) el.classList.remove("sel"); };
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return done();
+    const b=e.target.closest("[data-a]"); if(!b) return; const a=b.dataset.a; done();
+    if(a==="copy"){ try{ await navigator.clipboard.writeText(m.text); toast("Copied"); }catch(err){ toast("Couldn't copy"); } return; }
+    try{
+      if(a==="me"){ await api.hideMessage(peer,id); toast("Deleted for you"); }
+      if(a==="all"){ const lastAt=Math.max(...S.msgs.map(x=>x.at)); await api.deleteForAll(peer,m,m.at===lastAt); toast("Deleted for everyone"); }
+    }catch(err){ toast("Couldn't delete. Check your connection."); } };
+}
 $("#wall").onclick=async e=>{
   const im=e.target.closest(".msg img[data-media]"); if(im&&im.src){ const cap=im.parentElement.querySelector(".cap"); return openViewer(im.src, cap?cap.textContent:""); }
   const a=e.target.closest("[data-audio]"); if(!a) return;
@@ -1030,6 +1076,7 @@ addEventListener("beforeunload",()=>{ if(call) call.hangup(); });
 /* Android back button (APK) */
 function onBack(){
   if(call) return;
+  if(!$("#pop").hidden){ const c=$("#pop [data-close]"); if(c) c.click(); return; }
   if(!$("#viewer").hidden){ closeViewer(); return; }
   if(!$("#scan").hidden){ scanClose(); return; } if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
   if(!$("#sheet").hidden){ $("#sheet").hidden=true; return; }
