@@ -215,11 +215,54 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .recbar{flex:1;display:flex;align-items:center;gap:10px;background:var(--panel);border-radius:24px;padding:0 14px;height:48px;color:var(--mute)}
 .recbar .dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}
 .recbar b{color:var(--fg);font-variant-numeric:tabular-nums;font-weight:600}
-.attach{position:absolute;left:12px;bottom:70px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;gap:18px;box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:3}
+.attach{position:absolute;left:12px;bottom:70px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 10px;display:grid;grid-template-columns:repeat(5,minmax(56px,1fr));gap:10px 6px;max-width:calc(100vw - 24px);box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:3}
 .attach button{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--mute)}
 .attach button span{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:var(--orange);color:var(--on-orange)}
 .attach button:nth-child(2) span{background:#2f2f33;color:#fff}
-.attach button:nth-child(3) span{background:#ffffff;color:#0b0b0c}
+.attach button:nth-child(3) span{background:#ffffff;color:#0b0b0c;box-shadow:inset 0 0 0 1px var(--line)}
+.attach button:nth-child(4) span{background:#2f9e5b;color:#fff}
+.attach button:nth-child(5) span{background:#3b6fd8;color:#fff}
+/* location */
+.map{position:relative;overflow:hidden;background:#e6e1da;border-radius:8px;max-width:100%}
+.map img{position:absolute;width:256px;height:256px;max-width:none;user-select:none;-webkit-user-drag:none}
+.map .pin{position:absolute;left:50%;top:50%;width:28px;height:38px;transform:translate(-50%,-100%);filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.map .osm{position:absolute;right:4px;bottom:3px;font-size:9.5px;color:#333;background:rgba(255,255,255,.75);padding:1px 4px;border-radius:4px}
+.locmsg{display:block;border-radius:8px;overflow:hidden;max-width:100%}
+.locmsg .map{width:260px!important;max-width:100%}
+.locinfo{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.locinfo b{font-weight:600}.locinfo small{color:var(--mute);font-size:12px}
+.locnav{display:inline-flex;align-items:center;gap:6px;color:var(--orange);font-weight:600;font-size:13.5px;margin-top:6px;text-decoration:none}
+.locnav svg.i{width:15px;height:15px}
+.locprev .map{width:100%!important;border-radius:14px}
+.locwait{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:30px 10px}
+.spin{width:36px;height:36px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--orange);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* scanner */
+.scan{position:fixed;inset:0;z-index:75;background:#0b0b0c;color:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.scanbar{display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 8px}
+.scanbar b{font-size:16px;font-weight:600}
+.scanstage{flex:1;position:relative;min-height:0;margin:0 12px;display:grid;place-items:center;overflow:hidden}
+.scanstage canvas{position:absolute}
+.scanstage svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scanstage > img{max-width:100%;max-height:100%;object-fit:contain;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.hdl{position:absolute;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;touch-action:none;display:grid;place-items:center}
+.hdl::after{content:"";width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid #FF6A13;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.chips{display:flex;gap:8px;justify-content:center;padding:12px}
+.chips button{padding:8px 14px;border-radius:18px;border:1px solid #3a3a3f;color:#ddd;font-size:13.5px}
+.chips button[aria-checked="true"]{background:#FF6A13;border-color:#FF6A13;color:#140700;font-weight:600}
+.scanfoot{display:flex;gap:10px;padding:8px 14px 14px}
+.scanfoot .btn{flex:1;display:flex;align-items:center;justify-content:center;gap:8px}
+.scanfoot .btn.ghost{background:#1f1f22;color:#fff}
+/* viewer */
+.viewer{position:fixed;inset:0;z-index:78;background:#000;color:#fff;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.vbar{display:flex;align-items:center;justify-content:space-between;padding:6px 8px}
+.vbar span{font-size:14px;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vstage{flex:1;min-height:0;overflow:hidden;display:grid;place-items:center}
+.vstage img{max-width:100%;max-height:100%;object-fit:contain}
+.vstage.z{overflow:auto;display:block}
+.vstage.z img{max-width:none;max-height:none;width:240%}
+.vhint{text-align:center;font-size:12px;color:#888;margin:6px 0 10px}
+.msg img{cursor:zoom-in}
 .nochat{flex:1;display:grid;place-items:center;text-align:center;background:var(--wall);color:var(--mute);padding:30px}
 .nochat .logo{justify-content:center;flex-direction:column;font-size:60px;gap:14px;color:var(--fg);margin-bottom:14px}
 .nochat .logo .mark{width:1.3em;height:1.3em}
@@ -353,6 +396,8 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
         <button data-pick="gallery"><span id="icoGal"></span>Gallery</button>
         <button data-pick="camera"><span id="icoCamA"></span>Camera</button>
         <button data-pick="video"><span id="icoVid"></span>Video</button>
+        <button data-pick="location"><span id="icoLoc"></span>Location</button>
+        <button data-pick="scan"><span id="icoScan"></span>Scan</button>
       </div>
       <div class="composer" id="composer"></div>
     </div>
@@ -362,14 +407,18 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 <input type="file" id="fGallery" accept="image/*,video/*" hidden>
 <input type="file" id="fCamera" accept="image/*" capture="environment" hidden>
 <input type="file" id="fVideo" accept="video/*" capture="environment" hidden>
+<input type="file" id="fScan" accept="image/*" capture="environment" hidden>
 <input type="file" id="fStatus" accept="image/*" hidden>
 <input type="file" id="fAvatar" accept="image/*" hidden>
 
 <div id="sheet" class="sheet" hidden></div>
 <div id="story" class="story" hidden></div>
+<div id="scan" class="scan" hidden></div>
+<div id="viewer" class="viewer" hidden></div>
 <section id="call" hidden></section>
 <div class="toast" id="toast" hidden></div>
 
 <script src="app.js" defer></script>
+<script src="extras.js" defer></script>
 </body>
 </html>

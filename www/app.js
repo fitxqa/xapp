@@ -24,7 +24,8 @@ const P = {
   image:"M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21", users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   text:"M4 7V4h16v3M9 20h6M12 4v16", x:"M18 6L6 18M6 6l12 12", play:"M6 4l14 8-14 8V4z", pause:"M6 4h4v16H6zM14 4h4v16h-4z", trash:"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
   speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7", chev:"M9 18l6-6-6-6",
-  bluetooth:"M7 7l10 10-5 5V2l5 5L7 17", headphones:"M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
+  bluetooth:"M7 7l10 10-5 5V2l5 5L7 17", pinloc:"M12 22s8-7.6 8-13a8 8 0 0 0-16 0c0 5.4 8 13 8 13zM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  scan:"M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10", headphones:"M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
   earpiece:"M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM10 5h4M12 18h.01",
   moon:"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z", battery:"M2 7h16v10H2zM22 11v2", rocket:"M5 19l3-3M14 4l6 6-8 8-6-6 8-8zM15 9h.01", logout:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", full:"M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
   updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
@@ -293,6 +294,8 @@ function queueIce(pc, sess){
 }
 function preview(m){
   if(!m) return "";
+  if(m.type==="location") return "📍 "+(m.text||"Location");
+  if(m.type==="image"&&m.scan) return "📄 "+(m.text||"Scanned document");
   return {image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] ? ({image:"📷 Photo",video:"🎥 Video",audio:"🎤 Voice message"}[m.type] + (m.text?" · "+m.text:"")) : (m.text||"");
 }
 
@@ -322,7 +325,7 @@ try{ JSON.parse(localStorage.getItem("xappSeen")||"[]").forEach(x=>S.seenStatus.
 
 /* static icons */
 $("#btnCam").innerHTML=ico("camera"); $("#btnMenu").innerHTML=ico("more"); $("#icoSearch").innerHTML=ico("search");
-$("#icoGal").innerHTML=ico("image");
+$("#icoGal").innerHTML=ico("image"); $("#icoLoc").innerHTML=ico("pinloc"); $("#icoScan").innerHTML=ico("scan");
 $("#tiChats").innerHTML=ico("chat"); $("#tiUpd").innerHTML=ico("updates"); $("#tiCalls").innerHTML=ico("phone"); $("#tiCont").innerHTML=ico("users"); $("#tiSet").innerHTML=ico("settings"); $("#icoCamA").innerHTML=ico("camera"); $("#icoVid").innerHTML=ico("video");
 
 /* =========================  AUTH  ========================= */
@@ -655,6 +658,7 @@ function renderMsgs(){
     const cachedSrc = m.mediaId && S.mediaCache.has(m.mediaId) ? ` src="${S.mediaCache.get(m.mediaId)}"` : "";
     if(m.type==="image") body=`<img data-media="${esc(m.mediaId)}"${cachedSrc} alt="Photo">${m.text?`<div class="cap">${esc(m.text)}</div>`:""}`;
     else if(m.type==="video") body=`<video data-media="${esc(m.mediaId)}"${cachedSrc} controls playsinline preload="metadata"></video>${m.text?`<div class="cap">${esc(m.text)}</div>`:""}`;
+    else if(m.type==="location") body=locationBubble(m);
     else if(m.type==="audio") body=`<div class="audio" data-audio="${esc(m.mediaId)}"><button class="play" aria-label="Play voice message">${ico("play")}</button><div class="track"><i></i></div><small>${dur(m.dur||0)}</small></div>`;
     else body=esc(m.text).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:var(--orange-2)">$1</a>');
     html+=`<div class="msg ${mine?"me":""} ${first?"first":""}">${body}${meta}</div>`; });
@@ -664,6 +668,7 @@ function renderMsgs(){
 }
 async function media(id){ if(S.mediaCache.has(id)) return S.mediaCache.get(id); const d=await api.getMedia(id); S.mediaCache.set(id,d); return d; }
 $("#wall").onclick=async e=>{
+  const im=e.target.closest(".msg img[data-media]"); if(im&&im.src){ const cap=im.parentElement.querySelector(".cap"); return openViewer(im.src, cap?cap.textContent:""); }
   const a=e.target.closest("[data-audio]"); if(!a) return;
   const btn=a.querySelector(".play"), bar=a.querySelector(".track i");
   if(a._au){ if(a._au.paused){ a._au.play(); btn.innerHTML=ico("pause"); } else { a._au.pause(); btn.innerHTML=ico("play"); } return; }
@@ -692,7 +697,10 @@ function renderComposer(){
 }
 function sendText(){ const ta=$("#msgIn"), t=ta.value.trim(); if(!t||!S.peer) return; ta.value=""; ta.oninput(); api.send(S.peer,{type:"text",text:t}).catch(()=>toast("Not sent. Check your connection.")); ta.focus(); }
 $("#attach").onclick=e=>{ e.stopPropagation(); const p=e.target.closest("[data-pick]"); if(!p) return; $("#attach").hidden=true;
+  if(p.dataset.pick==="location") return sendLocation();
+  if(p.dataset.pick==="scan") return scanStart();
   ({gallery:"#fGallery",camera:"#fCamera",video:"#fVideo"})[p.dataset.pick] && $(({gallery:"#fGallery",camera:"#fCamera",video:"#fVideo"})[p.dataset.pick]).click(); };
+$("#fScan").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f&&S.peer) scanFile(f); };
 ["#fGallery","#fCamera","#fVideo"].forEach(s=>$(s).onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(f&&S.peer) sendFile(S.peer,f); });
 async function sendFile(peer,f){
   try{
@@ -1021,7 +1029,9 @@ function drawCall(state){
 addEventListener("beforeunload",()=>{ if(call) call.hangup(); });
 /* Android back button (APK) */
 function onBack(){
-  if(call) return; if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
+  if(call) return;
+  if(!$("#viewer").hidden){ closeViewer(); return; }
+  if(!$("#scan").hidden){ scanClose(); return; } if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }
   if(!$("#sheet").hidden){ $("#sheet").hidden=true; return; }
   if(S.peer&&innerWidth<900){ closeChat(); return; }
   if(S.tab!=="chats"){ setTab("chats"); return; }
