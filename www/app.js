@@ -24,6 +24,8 @@ const P = {
   image:"M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21", users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   text:"M4 7V4h16v3M9 20h6M12 4v16", x:"M18 6L6 18M6 6l12 12", play:"M6 4l14 8-14 8V4z", pause:"M6 4h4v16H6zM14 4h4v16h-4z", trash:"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
   speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7", chev:"M9 18l6-6-6-6",
+  bluetooth:"M7 7l10 10-5 5V2l5 5L7 17", headphones:"M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
+  earpiece:"M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM10 5h4M12 18h.01",
   moon:"M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z", battery:"M2 7h16v10H2zM22 11v2", rocket:"M5 19l3-3M14 4l6 6-8 8-6-6 8-8zM15 9h.01", logout:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9", full:"M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3",
   updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
@@ -358,7 +360,8 @@ api.onAuth(user=>{
     if(signupMode) $("#lgSwap").click();   // always come back to the sign-in form
     $("#lgPass").value=""; return; }
   S.me=user; $("#login").hidden=true; $("#shell").hidden=false; $("#mTest").hidden=!api.demo;
-  subs.push(api.watchUsers(us=>{ S.users={}; us.forEach(u=>S.users[u.uid]=u); if(S.users[S.me.uid]) S.me={...S.me,...S.users[S.me.uid]}; renderList(); if(S.peer) renderChatHead(); }));
+  subs.push(api.watchUsers(us=>{ S.users={}; us.forEach(u=>S.users[u.uid]=u);
+    if(call && S.users[call.peer]){ const h2=$("#call h2"), av=$("#call .info .av"); if(h2 && h2.textContent!==S.users[call.peer].name){ h2.textContent=S.users[call.peer].name; if(av) av.outerHTML=avatar(S.users[call.peer], av.className.replace(/^av\s*/,"")); } } if(S.users[S.me.uid]) S.me={...S.me,...S.users[S.me.uid]}; renderList(); if(S.peer) renderChatHead(); }));
   subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.map(peerOf)); renderList(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
@@ -868,7 +871,32 @@ if(isNative()){
   natOn("Background","hangup",()=>{ if(call) call.hangup(); });
   natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); if(PREFS.theme==="system") applyTheme(); });
 }
-function route(s){ nat("AudioRoute","set",{active:true,speaker:!!s.speaker}); }
+const AUDIO_NAMES={earpiece:"Phone",speaker:"Speaker",bluetooth:"Bluetooth",wired:"Headset"};
+const AUDIO_ICONS={earpiece:"earpiece",speaker:"speaker",bluetooth:"bluetooth",wired:"headphones"};
+function route(s){
+  return nat("AudioRoute","set",{active:true, route:s.route||"auto", preferSpeaker:!!s.speaker}).then(st=>{ if(st&&st.outputs){ s.audio=st; audioBtn(s); } return st; });
+}
+function audioBtn(s){
+  const b=$("#kAud"), lab=$("#kAudL"); if(!b) return;
+  let cur = s.audio&&s.audio.current ? s.audio.current : (s.speaker?"speaker":"earpiece");
+  b.innerHTML=ico(AUDIO_ICONS[cur]||"speaker"); b.classList.toggle("on", cur!=="earpiece");
+  if(lab) lab.textContent=AUDIO_NAMES[cur]||"Audio";
+  b.setAttribute("aria-label","Audio: "+(AUDIO_NAMES[cur]||"")+". Tap to change");
+}
+function audioMenu(s){
+  const outs=(s.audio&&s.audio.outputs||[]).map(o=>o.route);
+  if(outs.length<=2){   // only phone + speaker: just switch
+    const cur=s.audio&&s.audio.current ? s.audio.current : (s.speaker?"speaker":"earpiece");
+    s.route = cur==="speaker" ? "earpiece" : "speaker"; s.speaker = s.route==="speaker";
+    route(s).then(()=>toast(AUDIO_NAMES[s.route])); if(!isNative()) audioBtn(s); return;
+  }
+  const old=$("#audMenu"); if(old){ old.remove(); return; }
+  const m=document.createElement("div"); m.id="audMenu"; m.className="audmenu"; m.setAttribute("role","menu");
+  m.innerHTML=(s.audio.outputs||[]).map(o=>`<button role="menuitemradio" aria-checked="${s.audio.current===o.route}" data-r="${o.route}">${ico(AUDIO_ICONS[o.route]||"speaker")}<span>${esc(AUDIO_NAMES[o.route]||o.route)}${o.name&&o.route==="bluetooth"?`<small>${esc(o.name)}</small>`:""}</span>${s.audio.current===o.route?ico("check"):""}</button>`).join("");
+  $("#call").appendChild(m);
+  m.onclick=e=>{ const r=e.target.closest("[data-r]"); if(!r) return; s.route=r.dataset.r; s.speaker=s.route==="speaker"; m.remove(); route(s).then(()=>toast(AUDIO_NAMES[s.route])); };
+}
+natOn("AudioRoute","devices",st=>{ if(call&&st&&st.outputs){ call.audio=st; audioBtn(call); const m=$("#audMenu"); if(m){ m.remove(); } } });
 function attachRemote(s){
   [$("#rv"),$("#ra")].forEach(el=>{ if(!el) return; if(el.srcObject!==s.remote) el.srcObject=s.remote;
     el.muted = el.id==="rv"; if(el.id==="ra") el.volume=1;   // sound plays through the audio element only
@@ -890,7 +918,8 @@ function newSession(peer, video, outgoing){
       d.pairs=pairs; if(sel){ const l=c[sel.localCandidateId]||{}, r=c[sel.remoteCandidateId]||{}; d.selected=(l.candidateType||"")+"/"+(l.relayProtocol||l.protocol||"")+" -> "+(r.candidateType||"")+"/"+(r.protocol||""); } } }catch(e){ d.statsErr=String(e); }
     try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
     api.saveDiag("diagCall",d); };
-  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); route(sess); drawCall("active");
+  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); drawCall("active");
+    route(sess).then(st=>{ if(st && st.btPermission===false && !PREFS.btAsked){ PREFS.btAsked=true; savePrefs(); nat("AudioRoute","requestBluetooth"); } });
     nat("Background","callState",{active:true, peer:(S.users[peer]||{}).name||"Xapp", video:!!video, startedAt:Date.now()});
     if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
       clearInterval(sess.tick); sess.log("give-up 25s"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
@@ -973,16 +1002,17 @@ function drawCall(state){
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
     <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
     <div class="ctrls">${state==="incoming"
-      ? `<button class="end" id="kDec" aria-label="Decline">${endIco}</button><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button>`
-      : `<button id="kSpk" aria-label="Speaker" class="${s.speaker?"on":""}">${ico("speaker")}</button>${s.video?`<button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button>`:""}
-         <button id="kMute" aria-label="Mute" class="${s.muted?"on":""}">${ico(s.muted?"micoff":"mic")}</button><button class="end" id="kEnd" aria-label="End call">${endIco}</button>`}</div>`;
+      ? `<div class="cb"><button class="end" id="kDec" aria-label="Decline">${endIco}</button><small>Decline</small></div><div class="cb"><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button><small>Answer</small></div>`
+      : `<div class="cb"><button id="kAud" aria-label="Audio output">${ico("speaker")}</button><small id="kAudL">Audio</small></div>${s.video?`<div class="cb"><button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><small>Camera</small></div><div class="cb"><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button><small>Flip</small></div>`:""}
+         <div class="cb"><button id="kMute" aria-label="Mute" class="${s.muted?"on":""}">${ico(s.muted?"micoff":"mic")}</button><small>${s.muted?"Unmute":"Mute"}</small></div><div class="cb"><button class="end" id="kEnd" aria-label="End call">${endIco}</button><small>End</small></div>`}</div>`;
   el.hidden=false;
   const lv=$("#lv"); if(lv&&s.local) lv.srcObject=s.local;
   attachRemote(s);
   if(state==="incoming"){ $("#kDec").onclick=()=>{ api.declineCall(s.inc.id); s.close("declined"); }; $("#kAns").onclick=answer; return; }
   $("#kEnd").onclick=()=>s.hangup();
-  $("#kMute").onclick=()=>{ s.muted=!s.muted; s.local&&s.local.getAudioTracks().forEach(t=>t.enabled=!s.muted); const b=$("#kMute"); b.classList.toggle("on",s.muted); b.innerHTML=ico(s.muted?"micoff":"mic"); };
-  $("#kSpk").onclick=e=>{ s.speaker=!s.speaker; e.currentTarget.classList.toggle("on",s.speaker); route(s); toast(s.speaker?"Speaker on":"Earpiece"); };
+  $("#kMute").onclick=()=>{ s.muted=!s.muted; s.local&&s.local.getAudioTracks().forEach(t=>t.enabled=!s.muted); const b=$("#kMute"); b.classList.toggle("on",s.muted); b.innerHTML=ico(s.muted?"micoff":"mic"); b.nextElementSibling.textContent=s.muted?"Unmute":"Mute"; };
+  $("#kAud").onclick=e=>{ e.stopPropagation(); audioMenu(s); };
+  audioBtn(s);
   if($("#kCam")) $("#kCam").onclick=()=>{ s.camOff=!s.camOff; s.local&&s.local.getVideoTracks().forEach(t=>t.enabled=!s.camOff); const b=$("#kCam"); b.classList.toggle("on",s.camOff); b.innerHTML=ico(s.camOff?"videooff":"video"); };
   if($("#kFlip")) $("#kFlip").onclick=async()=>{ try{ s.front=!s.front; const ns=await navigator.mediaDevices.getUserMedia({video:{facingMode:s.front?"user":"environment",width:{ideal:1280},height:{ideal:720}}});
     const nt=ns.getVideoTracks()[0], old=s.local.getVideoTracks()[0]; if(s.pc){ const snd=s.pc.getSenders().find(x=>x.track&&x.track.kind==="video"); snd&&snd.replaceTrack(nt); }

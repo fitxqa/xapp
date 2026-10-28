@@ -272,7 +272,14 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 #call .info p{margin:0;color:#ffb17f;font-variant-numeric:tabular-nums}
 #call.video-on .info{text-shadow:0 1px 6px rgba(0,0,0,.8)}
 #call.video-on .info .av{display:none}
-#call .ctrls{margin-top:auto;position:relative;z-index:2;display:flex;gap:18px;background:rgba(20,20,22,.8);padding:14px 20px;border-radius:40px;backdrop-filter:blur(8px)}
+#call .ctrls{margin-top:auto;position:relative;z-index:2;display:flex;gap:14px;background:rgba(20,20,22,.82);padding:14px 18px 10px;border-radius:32px;backdrop-filter:blur(8px)}
+#call .cb{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:58px}
+#call .cb small{font-size:11.5px;color:#d6d0c9;font-weight:500;white-space:nowrap}
+.audmenu{position:absolute;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 140px);background:#1c1c1f;border:1px solid #2e2e32;border-radius:18px;padding:6px;min-width:240px;box-shadow:0 16px 40px rgba(0,0,0,.5)}
+.audmenu button{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:12px;color:#fff;font-size:15px;text-align:left}
+.audmenu button:active{background:#2b2b2f}
+.audmenu button span{flex:1;display:flex;flex-direction:column}.audmenu small{color:#a8a29c;font-size:12px}
+.audmenu button[aria-checked="true"]{color:var(--orange)}
 #call .ctrls button{width:56px;height:56px;border-radius:50%;background:#2b2b2f;display:grid;place-items:center}
 #call .ctrls button.on{background:#fff;color:#0b0b0c}
 #call .ctrls .end{background:var(--bad)}
@@ -280,6 +287,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 #call .pulse{animation:ringpulse 1.6s infinite}
 @keyframes ringpulse{0%{box-shadow:0 0 0 0 rgba(255,106,19,.6)}100%{box-shadow:0 0 0 30px rgba(255,106,19,0)}}
 
+#call:not([hidden]) ~ .toast{bottom:calc(env(safe-area-inset-bottom,0px) + 190px)}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 90px);transform:translateX(-50%);background:#fff;color:#0b0b0c;padding:10px 16px;border-radius:20px;font-weight:600;font-size:14px;z-index:99;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:90vw}
 .menu{position:absolute;right:10px;top:56px;background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:12px;min-width:200px;z-index:30;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.35)}
 .menu button{display:block;width:100%;text-align:left;padding:13px 16px;color:var(--fg);font-size:15.5px}
