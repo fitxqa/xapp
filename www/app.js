@@ -299,6 +299,12 @@ const api = DEMO ? makeDemo() : makeFire();
 const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", ...p}; })();
 async function applyTheme(){
   let dark;
+  if(PREFS.theme==="lite"){   // classic: light screens with a black top bar and tabs
+    document.documentElement.dataset.theme="lite";
+    try{ localStorage.setItem("xappTheme","lite"); }catch(e){}
+    const m=document.getElementById("themeColor"); if(m) m.content="#0b0b0c";
+    nat("Background","setBars",{dark:true}); return;
+  }
   if(PREFS.theme==="dark") dark=true;
   else if(PREFS.theme==="light") dark=false;
   else if(isNative()){ try{ const r=await nat("Background","isDark"); dark=!!(r&&r.dark); }catch(e){ dark=false; } }
@@ -470,13 +476,13 @@ function bgSection(){
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
   const swatch=(k,l,c)=>`<button class="tsw" role="radio" aria-checked="${PREFS.theme===k}" aria-label="${l}" title="${l}" data-set="theme:${k}"><span class="${c}"></span></button>`;
-  const themeName={system:"System",light:"Light",dark:"Dark"}[PREFS.theme]||"System";
+  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite"}[PREFS.theme]||"System";
   L.innerHTML=`<div class="sp">
     <div class="sg"><button class="me2" data-set="profile">${avatar(u,"",false)}<span style="flex:1;min-width:0"><b>${esc(u.name)}</b><small>@${esc(u.username||"")}${u.about?" · "+esc(u.about):""}</small></span><span class="chev" style="color:var(--mute)">${ico("chev")}</span></button></div>
 
     <div class="sg-h">Appearance</div><div class="sg">
       <div class="sr"><span class="bd">${ico("moon")}</span><span class="tx"><b>Theme</b><small>${themeName}</small></span>
-        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
+        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
     </div>
 
     <div class="sg-h">Calls</div><div class="sg">

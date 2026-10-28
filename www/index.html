@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content">
-<script>try{var t=localStorage.getItem("xappTheme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script>try{var t=localStorage.getItem("xappTheme");if(t==="dark"||t==="light"||t==="lite")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <meta name="theme-color" content="#0b0b0c" id="themeColor">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
@@ -54,6 +54,16 @@
     --field:#f3f0ec; --field-line:#e0dad2; --field-fg:#141414; --note-bg:#fff1e7; --note-line:#ffd2b3; --note-fg:#8a3a0c;
     color-scheme:light;
 }
+:root[data-theme="lite"]{
+    --head:#0b0b0c; --head-fg:#ffffff; --head-mute:#a8a29c; --head-line:#0b0b0c; --head-hover:rgba(255,255,255,.08);
+    --bg:#f5f3f0; --panel:#ffffff; --raise:#efebe6; --line:#e4dfd8;
+    --fg:#141414; --mute:#6d6862; --out:#ffe1cc; --in:#ffffff; --wall:#ece8e2; --wall-dot:#e2ddd5;
+    --field:#18181a; --field-line:#2b2b2f; --field-fg:#ffffff; --note-bg:#1c120b; --note-line:#4a2a14; --note-fg:#ffbe94;
+    color-scheme:light;
+}
+:root[data-theme="lite"] .logo .mark{display:none}
+:root[data-theme="lite"] .logo{font-family:var(--f-display);font-weight:800;letter-spacing:.2px}
+:root[data-theme="lite"] .logo small{font-family:var(--f-body)}
 *{box-sizing:border-box}
 html{-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
 button,a,input,textarea,[role="button"],.row,.sr{touch-action:manipulation}
@@ -130,6 +140,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .tsw[aria-checked="true"] span{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--orange)}
 .tsw .t-sys{background:linear-gradient(135deg,#ffffff 0 50%,#0b0b0c 50% 100%)}
 .tsw .t-light{background:#ffffff}.tsw .t-dark{background:#0b0b0c}
+.tsw .t-lite{background:linear-gradient(180deg,#0b0b0c 0 38%,#ffffff 38% 100%)}
 .me2{display:flex;align-items:center;gap:14px;width:100%;padding:14px;text-align:left}
 .me2 b{display:block;font-size:17px;font-weight:600}.me2 small{display:block;color:var(--mute);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .me-card{display:flex;align-items:center;gap:16px;padding:18px;width:100%;text-align:left;border-bottom:1px solid var(--line)}
