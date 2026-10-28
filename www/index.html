@@ -224,16 +224,19 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .attach button:nth-child(5) span{background:#3b6fd8;color:#fff}
 /* location */
 .map{position:relative;overflow:hidden;background:#e6e1da;border-radius:8px;max-width:100%}
-.map img{position:absolute;width:256px;height:256px;max-width:none;user-select:none;-webkit-user-drag:none}
+.map img{position:absolute!important;width:256px!important;height:256px!important;max-width:none!important;min-height:0!important;border-radius:0!important;object-fit:fill!important;background:none!important;display:block;user-select:none;-webkit-user-drag:none;cursor:pointer}
 .map .pin{position:absolute;left:50%;top:50%;width:28px;height:38px;transform:translate(-50%,-100%);filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 .map .osm{position:absolute;right:4px;bottom:3px;font-size:9.5px;color:#333;background:rgba(255,255,255,.75);padding:1px 4px;border-radius:4px}
 .locmsg{display:block;border-radius:8px;overflow:hidden;max-width:100%}
-.locmsg .map{width:260px!important;max-width:100%}
+.locmsg .map{max-width:none}
 .locinfo{display:flex;flex-direction:column;gap:2px;margin-top:6px}
 .locinfo b{font-weight:600}.locinfo small{color:var(--mute);font-size:12px}
+.locbtns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.locbtns a{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:18px;background:rgba(255,106,19,.12);color:var(--orange);font-weight:600;font-size:13px;text-decoration:none}
+.locbtns svg.i{width:15px;height:15px}
 .locnav{display:inline-flex;align-items:center;gap:6px;color:var(--orange);font-weight:600;font-size:13.5px;margin-top:6px;text-decoration:none}
 .locnav svg.i{width:15px;height:15px}
-.locprev .map{width:100%!important;border-radius:14px}
+.locprev .map{border-radius:14px}
 .locwait{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:30px 10px}
 .spin{width:36px;height:36px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--orange);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}

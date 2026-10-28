@@ -21,15 +21,61 @@ const mapsLink = (lat, lng) => `https://www.google.com/maps/search/?api=1&query=
 const navLink  = (lat, lng) => `https://www.google.com/maps/dir/?api=1&destination=${lat.toFixed(6)},${lng.toFixed(6)}`;
 
 /* Bubble for a location message (used by renderMsgs) */
+const wazeLink = (lat, lng) => `https://waze.com/ul?ll=${lat.toFixed(6)},${lng.toFixed(6)}&navigate=yes`;
 function locationBubble(m){
-  const lat = +m.lat, lng = +m.lng;
-  return `<a class="locmsg" href="${mapsLink(lat,lng)}" target="_blank" rel="noopener">${mapView(lat,lng,260,140)}</a>
-    <div class="locinfo"><b>📍 ${esc(m.text || "Location")}</b><small>${m.acc ? "Accurate to " + Math.round(m.acc) + " m · " : ""}Tap the map to open</small>
-    <a class="locnav" href="${navLink(lat,lng)}" target="_blank" rel="noopener">${ico("send")} Directions</a></div>`;
+  const lat = +m.lat, lng = +m.lng, d = `data-lat="${lat}" data-lng="${lng}" data-label="${esc(m.text||"Location")}"`;
+  return `<a class="locmsg" href="${mapsLink(lat,lng)}" target="_blank" rel="noopener" data-maps="choose" ${d}>${mapView(lat,lng,240,140)}</a>
+    <div class="locinfo"><b>📍 ${esc(m.text || "Location")}</b>${m.address?`<small>${esc(m.address)}</small>`:""}<small>${m.acc ? "Accurate to " + Math.round(m.acc) + " m" : ""}</small>
+    <div class="locbtns"><a href="${navLink(lat,lng)}" target="_blank" rel="noopener" data-maps="google" ${d}>${ico("pinloc")} Google Maps</a><a href="${wazeLink(lat,lng)}" target="_blank" rel="noopener" data-maps="waze" ${d}>${ico("send")} Waze</a></div></div>`;
 }
+/* In the app: hand the location to Google Maps / Waze / any maps app */
+document.addEventListener("click", e => {
+  const a = e.target.closest("[data-maps]"); if (!a || !isNative()) return;
+  e.preventDefault();
+  nat("Location", "openMaps", {lat:+a.dataset.lat, lng:+a.dataset.lng, app:a.dataset.maps, label:a.dataset.label});
+}, true);
 
 /* =========================  SEND LOCATION  ========================= */
-function sendLocation(){
+function sendLocation(){ if (isNative()) return sendLocationNative(); return sendLocationWeb(); }
+async function sendLocationNative(){
+  const peer = S.peer; if (!peer) return;
+  const sh = $("#sheet");
+  const frame = inner => { sh.innerHTML = `<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Send location</b></div></header><div class="form">${inner}</div>`; sh.hidden = false; };
+  sh.onclick = e => { if (e.target.closest("[data-close]")) sh.hidden = true; };
+  frame(`<div class="locwait"><div class="spin"></div><p>Finding your exact location…</p><p class="note">Allow <b>Precise</b> location when Android asks. Outdoors or near a window is most accurate.</p></div>`);
+  let r;
+  try { r = await nat("Location", "current", {}, true); }
+  catch (err) {
+    const code = (err && (err.code || err.message)) || "";
+    const off = /OFF/.test(code), denied = /DENIED|denied/.test(code);
+    frame(`<p style="margin:0;line-height:1.5">${off ? "Location (GPS) is switched off on this phone. Turn it on, then try again."
+      : denied ? "Xapp is not allowed to use your location. Open Xapp's settings → Permissions → Location → “Allow only while using the app” and switch on <b>Use precise location</b>."
+      : "Couldn't get a GPS fix. Move outdoors or near a window and try again."}</p>
+      ${off ? '<button class="btn" id="locFix">Turn on Location</button>' : denied ? '<button class="btn" id="locFix">Open Xapp settings</button>' : ""}
+      <button class="btn ghost" id="locRetry">Try again</button>`);
+    const f = $("#locFix"); if (f) f.onclick = () => nat("Location", "openSettings", {what: off ? "off" : "app"});
+    $("#locRetry").onclick = sendLocationNative; return;
+  }
+  if (!r || typeof r.lat !== "number") { frame(`<p>Couldn't get your location.</p>`); return; }
+  const lat = r.lat, lng = r.lng, acc = Math.round(r.acc || 0);
+  frame(`<div class="locprev" id="locPrev"></div>
+    <p style="margin:0"><b>${r.address ? esc(r.address) : "Your current location"}</b><br><span class="note">Accurate to ${acc} m${r.precise ? "" : " · approximate only"}</span></p>
+    ${r.precise ? "" : `<p class="note" style="color:var(--orange);margin:0">Precise location is off, so this point can be far away. Settings → Apps → Xapp → Permissions → Location → switch on “Use precise location”.</p><button class="btn ghost" id="locPerm">Open Xapp settings</button>`}
+    <label for="locName">Name (optional)</label><input id="locName" placeholder="e.g. Home, Office, Pickup point" maxlength="60">
+    <button class="btn" id="locSend">Send this location</button>
+    <button class="btn ghost" id="locAgain">Refresh location</button>`);
+  const box = $("#locPrev"); box.innerHTML = mapView(lat, lng, Math.max(240, box.clientWidth || (innerWidth - 40)), 220);
+  const p = $("#locPerm"); if (p) p.onclick = () => nat("Location", "openSettings", {what:"app"});
+  $("#locAgain").onclick = sendLocationNative;
+  $("#locSend").onclick = async () => {
+    sh.hidden = true;
+    const label = ($("#locName").value || "").trim() || "Current location";
+    const msg = {type:"location", lat:+lat.toFixed(6), lng:+lng.toFixed(6), acc, text:label};
+    if (r.address) msg.address = r.address;
+    try { await api.send(peer, msg); } catch (err) { toast("Location not sent. Check your connection."); }
+  };
+}
+function sendLocationWeb(){
   const peer = S.peer; if (!peer) return;
   const sh = $("#sheet");
   const frame = inner => { sh.innerHTML = `<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Send location</b></div></header><div class="form">${inner}</div>`; sh.hidden = false; };
@@ -40,10 +86,11 @@ function sendLocation(){
   frame(`<div class="locwait"><div class="spin"></div><p>Finding your location…</p><p class="note">Allow location when Android asks. Outdoors or near a window is most accurate.</p></div>`);
   const show = () => {
     const {latitude:lat, longitude:lng, accuracy:acc} = best.coords;
-    frame(`<div class="locprev">${mapView(lat, lng, Math.min(innerWidth - 40, 520), 220)}</div>
+    frame(`<div class="locprev" id="locPrev"></div>
       <p style="margin:0"><b>Your current location</b><br><span class="note">Accurate to ${Math.round(acc)} m${acc > 60 ? " · still improving…" : ""}</span></p>
       <label for="locName">Name (optional)</label><input id="locName" placeholder="e.g. Home, Office, Pickup point" maxlength="60">
       <button class="btn" id="locSend">Send this location</button>`);
+    const box = $("#locPrev"); box.innerHTML = mapView(lat, lng, Math.max(240, box.clientWidth || (innerWidth - 40)), 220);
     $("#locSend").onclick = async () => {
       stop(); sh.hidden = true;
       const label = ($("#locName").value || "").trim() || "Current location";
@@ -64,7 +111,7 @@ function sendLocation(){
   watch = navigator.geolocation.watchPosition(pos => {
     if (!best || pos.coords.accuracy < best.coords.accuracy - 5){ const first = !best; best = pos; if (first || !$("#locName") || document.activeElement !== $("#locName")) show(); }
     if (pos.coords.accuracy <= 25) stop();
-  }, err => { if (!best) fail(err); }, {enableHighAccuracy:true, timeout:20000, maximumAge:30000});
+  }, err => { if (!best) fail(err); }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
   setTimeout(stop, 45000);
 }
 

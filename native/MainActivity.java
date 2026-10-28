@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AudioRoutePlugin.class);
         registerPlugin(BackgroundPlugin.class);
+        registerPlugin(LocationPlugin.class);
         super.onCreate(savedInstanceState);
         CallNotifications.ensureChannels(this);
         handleCallIntent(getIntent());
