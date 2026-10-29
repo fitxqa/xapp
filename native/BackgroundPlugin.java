@@ -181,6 +181,7 @@ public class BackgroundPlugin extends Plugin {
         CallService.callVideo = Boolean.TRUE.equals(call.getBoolean("video", false));
         Long started = call.getLong("startedAt");
         CallService.callStartedAt = started == null ? 0 : started;
+        CallService.callHeld = Boolean.TRUE.equals(call.getBoolean("held", false));
         if (NativeWatcher.signedIn(getContext()) || active) CallService.start(getContext(), active);
         call.resolve();
     }

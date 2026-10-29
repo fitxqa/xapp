@@ -23,7 +23,7 @@ const P = {
   check:"M20 6L9 17l-5-5", checks:"M17 6L6 17l-5-5M23 6L12 17l-1.5-1.5", out:"M7 17L17 7M8 7h9v9", inn:"M17 7L7 17M16 17H7V8",
   image:"M3 3h18v18H3zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 15l-5-5L5 21", users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",
   text:"M4 7V4h16v3M9 20h6M12 4v16", x:"M18 6L6 18M6 6l12 12", play:"M6 4l14 8-14 8V4z", pause:"M6 4h4v16H6zM14 4h4v16h-4z", trash:"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
-  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7", chev:"M9 18l6-6-6-6",
+  speaker:"M11 5L6 9H2v6h4l5 4V5zM19 5a10 10 0 0 1 0 14M15.5 8.5a5 5 0 0 1 0 7", chev:"M9 18l6-6-6-6", chevdown:"M6 9l6 6 6-6",
   bluetooth:"M7 7l10 10-5 5V2l5 5L7 17", pinloc:"M12 22s8-7.6 8-13a8 8 0 0 0-16 0c0 5.4 8 13 8 13zM12 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   scan:"M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10", headphones:"M3 18v-6a9 9 0 0 1 18 0v6M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z",
   earpiece:"M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM10 5h4M12 18h.01",
@@ -187,6 +187,7 @@ function makeFire(){
         if(d.answer && !pc.currentRemoteDescription && !sess.answering){ sess.answering=true;
           sess.log("answer-received"); pc.setRemoteDescription(new RTCSessionDescription(d.answer)).then(()=>{ addC.flush(); sess.onActive(); }).catch(e=>{ sess.log("srd-err "+(e&&e.message)); sess.answering=false; }); }
         if(["ended","declined","missed"].includes(d.status)) sess.close(d.status);
+        sess.onDoc && sess.onDoc(d);
       }));
       sess.unsubs.push(ansC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
       sess.setStatus = st => ref.update(st).catch(()=>{});
@@ -200,7 +201,7 @@ function makeFire(){
       const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
       await ref.update({answer:{type:ans.type,sdp:ans.sdp}, status:"active", answeredAt:Date.now()});
       sess.unsubs.push(offC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
-      sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && ["ended","missed"].includes(d.status)) sess.close("ended"); }));
+      sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && ["ended","missed"].includes(d.status)) sess.close("ended"); if(d) sess.onDoc && sess.onDoc(d); }));
       sess.setStatus = st => ref.update(st).catch(()=>{});
       sess.onActive();
     },
@@ -978,16 +979,79 @@ function newSession(peer, video, outgoing){
     if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
       clearInterval(sess.tick); sess.log("give-up 25s"); if(p) p.textContent="Can't connect · relay "+(sess.types.has("relay")?"reached":"NOT reached");
       toast("Call could not connect. Check Settings → Test connection."); setTimeout(()=>sess.hangup(),4000); },25000);
-    sess.tick=setInterval(()=>{ const p=$("#callSt"); if(!p) return;
-      if(sess.connected){ if(!sess.connAt) sess.connAt=Date.now(); p.textContent=dur((Date.now()-sess.connAt)/1000); } else p.textContent=sess.connAt?"Reconnecting…":"Connecting…"; },1000); };
-  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
+    sess.tick=setInterval(()=>{
+      if(sess.connected && !sess.connAt){ sess.connAt=Date.now(); sess.notify(); }
+      const t=callStatusText(sess), p=$("#callSt"); if(p) p.textContent=t;
+      const mt=sess.connAt?dur((Date.now()-sess.connAt)/1000):"…"; ["#cbT","#pipT"].forEach(q=>{ const e=$(q); if(e) e.textContent=sess.held||sess.peerHeld?"On hold":mt; }); },1000); };
+  sess.notify=()=>nat("Background","callState",{active:true, peer:(S.users[peer]||{}).name||"Xapp", video:!!sess.video, startedAt:sess.connAt||sess.startedAt||Date.now(), held:!!sess.held});
+  /* a normal phone call took over: hold the Xapp call, then resume */
+  sess.setHold=on=>{ on=!!on; if(!!sess.held===on || sess.closed) return; sess.held=on; sess.log(on?"hold":"resume");
+    if(sess.local){ sess.local.getAudioTracks().forEach(t=>t.enabled=!on&&!sess.muted); sess.local.getVideoTracks().forEach(t=>t.enabled=!on&&!sess.camOff); }
+    const ra=$("#ra"); if(ra) ra.muted=on;
+    sess.setStatus({holdBy: on ? S.me.uid : null}); sess.notify();
+    if(!on){ fixMic(sess); route(sess); toast("Call resumed"); } else toast("Call on hold");
+    const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); };
+  sess.onDoc=d=>{ const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
+  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); hideMini(); clearTimeout(sess.idleT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
-    setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; },why==="ended"?600:1400); call=null; };
+    if(sess.minimized){ $("#call").hidden=true; $("#call").innerHTML=""; } else setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; $("#call").classList.remove("idle"); },why==="ended"?600:1400); call=null; };
   sess.hangup=()=>{ if(sess.closed) return; sess.setStatus(sess.startedAt?{status:"ended",endedAt:Date.now()}:{status:sess.outgoing?"missed":"declined",endedAt:Date.now()}); sess.close("ended"); };
   return sess;
 }
+function callStatusText(sess){
+  const name=(S.users[sess.peer]||{}).name||"Contact";
+  if(sess.held) return "On hold · you're on a phone call";
+  if(sess.peerHeld) return name.split(" ")[0]+" is on another call · on hold";
+  if(sess.connected||api.demo) return sess.connAt?dur((Date.now()-sess.connAt)/1000):"0:00";
+  return sess.connAt?"Reconnecting…":"Connecting…";
+}
+async function fixMic(sess){   // after a phone call Android may have ended the microphone track
+  try{ const t=sess.local&&sess.local.getAudioTracks()[0]; if(t && t.readyState==="live") return;
+    const ns=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); const nt=ns.getAudioTracks()[0];
+    if(sess.pc){ const snd=sess.pc.getSenders().find(x=>x.track&&x.track.kind==="audio") || sess.pc.getSenders().find(x=>!x.track); snd&&snd.replaceTrack(nt); }
+    if(t) sess.local.removeTrack(t); sess.local.addTrack(nt); nt.enabled=!sess.muted; sess.log("mic restored");
+  }catch(e){ sess.log("mic restore failed"); }
+}
+/* drag anything; it snaps to the nearest side. A short tap calls onTap. */
+function makeDraggable(el, onTap){
+  let id=null, sx=0, sy=0, ox=0, oy=0, moved=false; el.style.touchAction="none";
+  el.addEventListener("pointerdown",e=>{ id=e.pointerId; try{ el.setPointerCapture(id); }catch(_){} const r=el.getBoundingClientRect(); sx=e.clientX; sy=e.clientY; ox=r.left; oy=r.top; moved=false; el.style.transition="none"; e.stopPropagation(); });
+  el.addEventListener("pointermove",e=>{ if(e.pointerId!==id) return; const dx=e.clientX-sx, dy=e.clientY-sy; if(!moved && Math.hypot(dx,dy)<7) return; moved=true;
+    el.style.left=(ox+dx)+"px"; el.style.top=(oy+dy)+"px"; el.style.right="auto"; el.style.bottom="auto"; });
+  const up=e=>{ if(e.pointerId!==id) return; id=null; e.stopPropagation();
+    if(!moved){ onTap&&onTap(); return; }
+    const r=el.getBoundingClientRect(), m=12, W=innerWidth, H=innerHeight;
+    const left=(r.left+r.width/2<W/2)?m:W-r.width-m, top=Math.min(Math.max(r.top,44),H-r.height-90);
+    el.style.transition="left .22s ease, top .22s ease"; el.style.left=left+"px"; el.style.top=top+"px"; el.dataset.dragged="1"; };
+  el.addEventListener("pointerup",up); el.addEventListener("pointercancel",up);
+  el.addEventListener("click",e=>e.stopPropagation());
+}
+/* minimise: back to chats while the call continues */
+function minimizeCall(){ if(!call||!call.startedAt) return; call.minimized=true; $("#call").hidden=true; showMini(call); }
+function restoreCall(){ if(!call) return; call.minimized=false; hideMini(); $("#call").hidden=false; attachRemote(call); wakeCall(); }
+function showMini(s){
+  hideMini(); const name=(S.users[s.peer]||{}).name||"Call";
+  if(s.video){
+    const d=document.createElement("div"); d.id="pip"; d.className="pip"; d.setAttribute("role","button"); d.setAttribute("aria-label","Return to video call with "+name);
+    d.innerHTML=`<video autoplay playsinline muted></video><span class="pipn">${esc(name)}</span><span class="pipt" id="pipT">${s.connAt?dur((Date.now()-s.connAt)/1000):"…"}</span>`;
+    document.body.appendChild(d); const v=d.querySelector("video"); v.srcObject=s.remote; v.play&&v.play().catch(()=>{});
+    makeDraggable(d, restoreCall);
+  } else {
+    const b=document.createElement("button"); b.id="callbar"; b.className="callbar"; b.setAttribute("aria-label","Return to call");
+    b.innerHTML=`<span class="cbdot"></span><b>${esc(name)}</b><span id="cbT">${s.connAt?dur((Date.now()-s.connAt)/1000):"…"}</span><span class="cbtap">Tap to return</span>`;
+    b.onclick=restoreCall; document.body.appendChild(b); document.body.classList.add("incall");
+  }
+}
+function hideMini(){ ["#pip","#callbar"].forEach(q=>{ const e=$(q); if(e) e.remove(); }); document.body.classList.remove("incall"); }
+/* video call: buttons fade away, a tap brings them back */
+function wakeCall(){ const el=$("#call"); el.classList.remove("idle"); if(!call||!call.video||!call.startedAt) return;
+  clearTimeout(call.idleT); call.idleT=setTimeout(()=>{ if(call && !call.minimized && !$("#audMenu")) el.classList.add("idle"); },4000); }
+$("#call").addEventListener("click",e=>{ if(!call||!call.video||!call.startedAt) return;
+  if(e.target.closest(".ctrls,.topb,.audmenu,video.local")) { wakeCall(); return; }
+  const el=$("#call"); if(el.classList.contains("idle")) wakeCall(); else { el.classList.add("idle"); clearTimeout(call.idleT); } });
+natOn("AudioRoute","interruption",e=>{ if(call && call.startedAt && e) call.setHold(!!e.hold); });
 function micHelp(e){
   const name=(e&&e.name)||"", busy=/NotReadable|TrackStart|Abort/.test(name), missing=/NotFound|Overconstrained/.test(name);
   const sh=$("#sheet");
@@ -1054,13 +1118,16 @@ function drawCall(state){
   const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
   el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
-    <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${label}</p></div>
+    ${state!=="incoming"?`<button class="topb ibtn" id="kMin" aria-label="Minimise call: go to chats" title="Minimise">${ico("chevdown")}</button>`:""}
+    <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${state==="active"?callStatusText(s):label}</p></div>
     <div class="ctrls">${state==="incoming"
       ? `<div class="cb"><button class="end" id="kDec" aria-label="Decline">${endIco}</button><small>Decline</small></div><div class="cb"><button class="ok" id="kAns" aria-label="Answer">${ico(s.video?"video":"phone")}</button><small>Answer</small></div>`
       : `<div class="cb"><button id="kAud" aria-label="Audio output">${ico("speaker")}</button><small id="kAudL">Audio</small></div>${s.video?`<div class="cb"><button id="kCam" aria-label="Camera on or off" class="${s.camOff?"on":""}">${ico(s.camOff?"videooff":"video")}</button><small>Camera</small></div><div class="cb"><button id="kFlip" aria-label="Switch camera">${ico("flip")}</button><small>Flip</small></div>`:""}
          <div class="cb"><button id="kMute" aria-label="Mute" class="${s.muted?"on":""}">${ico(s.muted?"micoff":"mic")}</button><small>${s.muted?"Unmute":"Mute"}</small></div><div class="cb"><button class="end" id="kEnd" aria-label="End call">${endIco}</button><small>End</small></div>`}</div>`;
-  el.hidden=false;
-  const lv=$("#lv"); if(lv&&s.local) lv.srcObject=s.local;
+  el.hidden=!!s.minimized;
+  const lv=$("#lv"); if(lv&&s.local){ lv.srcObject=s.local; makeDraggable(lv); }
+  const km=$("#kMin"); if(km) km.onclick=e=>{ e.stopPropagation(); if(s.startedAt) minimizeCall(); else toast("You can minimise once the call is answered"); };
+  if(state==="active") wakeCall();
   attachRemote(s);
   if(state==="incoming"){ $("#kDec").onclick=()=>{ api.declineCall(s.inc.id); s.close("declined"); }; $("#kAns").onclick=answer; return; }
   $("#kEnd").onclick=()=>s.hangup();
@@ -1075,7 +1142,7 @@ function drawCall(state){
 addEventListener("beforeunload",()=>{ if(call) call.hangup(); });
 /* Android back button (APK) */
 function onBack(){
-  if(call) return;
+  if(call){ if(!$("#call").hidden && call.startedAt) minimizeCall(); return; }
   if(!$("#pop").hidden){ const c=$("#pop [data-close]"); if(c) c.click(); return; }
   if(!$("#viewer").hidden){ closeViewer(); return; }
   if(!$("#scan").hidden){ scanClose(); return; } if(!$("#story").hidden){ $("#story").hidden=true; $("#story").style.background=""; return; }

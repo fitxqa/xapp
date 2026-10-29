@@ -16,6 +16,8 @@ import androidx.core.app.ServiceCompat;
 /** Keeps Xapp listening in the background so calls ring with the app closed. Shows a quiet permanent notification. */
 public class CallService extends Service {
     static final String CH_SERVICE = "xapp_ready";
+    static final String CH_CALL = "xapp_ongoing_call";
+    static volatile boolean callHeld = false;
     static final int ID_SERVICE = 8000;
     static volatile boolean running = false;
     static volatile String callPeer = null;
@@ -35,17 +37,23 @@ public class CallService extends Service {
         ensureChannel();
         Intent open = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent pi = PendingIntent.getActivity(this, 20, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder b = new NotificationCompat.Builder(this, CH_SERVICE)
+        NotificationCompat.Builder b = new NotificationCompat.Builder(this, inCall ? CH_CALL : CH_SERVICE)
             .setSmallIcon(android.R.drawable.sym_action_call).setColor(0xFFFF6A13)
             .setOngoing(true).setSilent(true).setContentIntent(pi);
         if (inCall) {
             Intent hang = new Intent(this, HangupReceiver.class).setAction("qa.fitx.xapp.HANGUP");
             PendingIntent hangPi = PendingIntent.getBroadcast(this, 21, hang, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            b.setContentTitle(callPeer != null ? callPeer : "Xapp")
-             .setContentText(callStartedAt > 0 ? (callVideo ? "Video call · tap to return" : "Call · tap to return") : "Calling…")
+            String who = callPeer != null ? callPeer : "Xapp";
+            b.setContentTitle(who)
+             .setContentText(callHeld ? "On hold · tap to return" : callStartedAt > 0 ? (callVideo ? "Xapp video call · tap to return" : "Xapp call · tap to return") : "Calling…")
              .setCategory(NotificationCompat.CATEGORY_CALL).setPriority(NotificationCompat.PRIORITY_HIGH)
-             .addAction(0, "End call", hangPi);
+             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+            // running timer in the notification and (Android 12+) the green call chip in the status bar
             if (callStartedAt > 0) b.setUsesChronometer(true).setWhen(callStartedAt).setShowWhen(true);
+            try {
+                androidx.core.app.Person person = new androidx.core.app.Person.Builder().setName(who).setImportant(true).build();
+                b.setStyle(NotificationCompat.CallStyle.forOngoingCall(person, hangPi));
+            } catch (Exception e) { b.addAction(0, "End call", hangPi); }
         } else {
             b.setContentTitle("Xapp").setContentText(NativeWatcher.signedIn(this) ? "Ready to receive calls" : "Open Xapp to finish setup")
              .setPriority(NotificationCompat.PRIORITY_LOW);
@@ -78,6 +86,11 @@ public class CallService extends Service {
     private void ensureChannel() {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null && nm.getNotificationChannel(CH_CALL) == null) {
+            NotificationChannel c2 = new NotificationChannel(CH_CALL, "Ongoing call", NotificationManager.IMPORTANCE_DEFAULT);
+            c2.setDescription("Shows the call timer while you use other apps"); c2.setSound(null, null); c2.enableVibration(false); c2.setShowBadge(false);
+            nm.createNotificationChannel(c2);
+        }
         if (nm != null && nm.getNotificationChannel(CH_SERVICE) == null) {
             NotificationChannel ch = new NotificationChannel(CH_SERVICE, "Ready for calls", NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("Keeps Xapp running so calls can ring"); ch.setShowBadge(false);
