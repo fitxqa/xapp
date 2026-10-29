@@ -57,7 +57,7 @@ const chatId = (a,b) => [a,b].sort().join("_");
 const peerOf = c => (c.members||[]).find(m=>m!==S.me.uid);
 function toast(t){ const el=$("#toast"); el.textContent=t; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,2600); }
 const readFile = f => new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); });
-async function shrinkImage(file, max=1280, q=.74){
+async function shrinkImage(file, max=1600, q=.8){
   const src = await readFile(file); const img = new Image(); img.src = src; await img.decode();
   const k = Math.min(1, max/Math.max(img.width,img.height)); const c=document.createElement("canvas");
   c.width=Math.round(img.width*k); c.height=Math.round(img.height*k); c.getContext("2d").drawImage(img,0,0,c.width,c.height);

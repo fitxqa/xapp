@@ -277,18 +277,81 @@ function scanClose(){ const el = $("#scan"); el.hidden = true; el.innerHTML = ""
 addEventListener("resize", () => { if (SCAN.onResize && !$("#scan").hidden) SCAN.onResize(); });
 
 /* =========================  FULL-SCREEN PHOTO VIEWER  ========================= */
+/* Pinch to zoom (1×–5×), drag to move, double-tap to zoom in/out, swipe down to close. */
 function openViewer(src, caption){
   const v = $("#viewer");
   v.innerHTML = `<div class="vbar"><button class="ibtn" id="vX" aria-label="Close">${ico("x")}</button><span>${esc(caption || "")}</span><span style="width:44px"></span></div>
-    <div class="vstage" id="vStage"><img id="vImg" src="${src}" alt="${esc(caption || "Photo")}"></div><p class="vhint">Double-tap to zoom</p>`;
-  v.hidden = false;
-  const st = $("#vStage"), im = $("#vImg"); let zoom = false, lastTap = 0;
-  const toggle = (cx, cy) => {
-    zoom = !zoom; st.classList.toggle("z", zoom);
-    if (zoom){ requestAnimationFrame(() => { const r = im.getBoundingClientRect(); st.scrollLeft = (cx / innerWidth) * (r.width - st.clientWidth); st.scrollTop = (cy / innerHeight) * (r.height - st.clientHeight); }); }
+    <div class="vstage" id="vStage"><img id="vImg" src="${src}" alt="${esc(caption || "Photo")}" draggable="false"></div>
+    <p class="vhint">Pinch or double-tap to zoom · swipe down to close</p>`;
+  v.hidden = false; v.style.background = "";
+  const st = $("#vStage"), im = $("#vImg");
+  let s = 1, x = 0, y = 0;                       // current zoom and offset (px, from the centre)
+  const pts = new Map();                         // fingers on the screen
+  let g = null, lastTap = {t:0, x:0, y:0}, moved = false, closingDy = 0;
+  const MAX = 5;
+  const rel = (cx, cy) => { const r = st.getBoundingClientRect(); return [cx - (r.left + r.width/2), cy - (r.top + r.height/2)]; };
+  const clamp = () => {
+    const r = st.getBoundingClientRect(), w = im.offsetWidth * s, h = im.offsetHeight * s;
+    const mx = Math.max(0, (w - r.width) / 2), my = Math.max(0, (h - r.height) / 2);
+    x = Math.min(mx, Math.max(-mx, x)); y = Math.min(my, Math.max(-my, y));
   };
-  st.onclick = e => { const now = Date.now(); if (now - lastTap < 320){ toggle(e.clientX, e.clientY); lastTap = 0; } else lastTap = now; };
-  st.ondblclick = e => e.preventDefault();
+  const apply = (anim) => {
+    im.style.transition = anim ? "transform .22s ease" : "none";
+    im.style.transform = `translate(${x}px, ${y + closingDy}px) scale(${s})`;
+    v.style.background = closingDy ? `rgba(0,0,0,${Math.max(0.25, 1 - Math.abs(closingDy) / 400)})` : "";
+  };
+  const zoomAt = (ns, px, py) => { ns = Math.min(MAX, Math.max(1, ns)); x = px - (px - x) * (ns / s); y = py - (py - y) * (ns / s); s = ns; if (s === 1){ x = 0; y = 0; } clamp(); };
+
+  st.addEventListener("pointerdown", e => {
+    st.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false;
+    if (pts.size === 2){
+      const [a, b] = [...pts.values()];
+      g = {type:"pinch", d:Math.hypot(a[0]-b[0], a[1]-b[1]), m:rel((a[0]+b[0])/2, (a[1]+b[1])/2), s, x, y};
+    } else if (pts.size === 1){
+      g = {type: s > 1 ? "pan" : "swipe", sx:e.clientX, sy:e.clientY, x, y};
+    }
+  });
+  st.addEventListener("pointermove", e => {
+    if (!pts.has(e.pointerId) || !g) return;
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    if (g.type === "pinch" && pts.size >= 2){
+      const [a, b] = [...pts.values()], d = Math.hypot(a[0]-b[0], a[1]-b[1]), m = rel((a[0]+b[0])/2, (a[1]+b[1])/2);
+      const ns = Math.min(MAX, Math.max(1, g.s * d / g.d));
+      x = m[0] - (g.m[0] - g.x) * (ns / g.s); y = m[1] - (g.m[1] - g.y) * (ns / g.s); s = ns; clamp(); moved = true; apply(false);
+    } else if (g.type === "pan"){
+      const dx = e.clientX - g.sx, dy = e.clientY - g.sy; if (Math.hypot(dx, dy) > 4) moved = true;
+      x = g.x + dx; y = g.y + dy; clamp(); apply(false);
+    } else if (g.type === "swipe"){
+      const dy = e.clientY - g.sy; if (Math.abs(dy) > 6) moved = true;
+      closingDy = dy > 0 ? dy : dy / 3; apply(false);
+    }
+  });
+  const end = e => {
+    if (!pts.has(e.pointerId)) return; pts.delete(e.pointerId);
+    if (g && g.type === "swipe" && pts.size === 0){
+      if (closingDy > 120){ closeViewer(); return; }
+      if (closingDy){ closingDy = 0; apply(true); }
+    }
+    if (pts.size === 1 && g && g.type === "pinch"){            // one finger left after a pinch: continue as a pan
+      const [p] = [...pts.values()]; g = {type: s > 1 ? "pan" : "swipe", sx:p[0], sy:p[1], x, y}; return;
+    }
+    if (pts.size === 0){
+      if (!moved && e.type === "pointerup"){                     // a tap: double-tap toggles zoom
+        const now = Date.now();
+        if (now - lastTap.t < 300 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40){
+          const [px, py] = rel(e.clientX, e.clientY);
+          if (s > 1.05){ s = 1; x = 0; y = 0; } else zoomAt(2.5, px, py);
+          apply(true); lastTap.t = 0;
+        } else lastTap = {t:now, x:e.clientX, y:e.clientY};
+      }
+      g = null;
+    }
+  };
+  st.addEventListener("pointerup", end); st.addEventListener("pointercancel", end);
+  st.addEventListener("wheel", e => { e.preventDefault(); const [px, py] = rel(e.clientX, e.clientY); zoomAt(s * (e.deltaY < 0 ? 1.15 : 1/1.15), px, py); apply(false); }, {passive:false});
+  st.addEventListener("dblclick", e => e.preventDefault());
+  im.onload = () => { s = 1; x = 0; y = 0; apply(false); };
   $("#vX").onclick = closeViewer;
+  v._state = () => ({s, x, y});                                   // for tests
 }
-function closeViewer(){ const v = $("#viewer"); v.hidden = true; v.innerHTML = ""; }
+function closeViewer(){ const v = $("#viewer"); v.hidden = true; v.innerHTML = ""; v.style.background = ""; }
