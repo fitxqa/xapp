@@ -479,7 +479,7 @@ function srow(act,icon,title,opt={}){
   const right = opt.right!==undefined ? opt.right : `<span class="chev">${ico("chev")}</span>`;
   return `<button class="sr${opt.danger?" danger":""}" data-set="${act}"><span class="bd">${ico(icon)}</span><span class="tx"><b>${title}</b>${opt.sub?`<small class="${opt.warn?"warn":""}">${opt.sub}</small>`:""}</span>${opt.val?`<span class="vl">${opt.val}</span>`:""}${right}</button>`;
 }
-function state(on){ return `<span class="switch ${on?"on":""}" role="switch" aria-checked="${!!on}"></span>`; }
+function state(on){ return `<span class="vl"><span class="dot ${on?"":"off"}"></span>${on?"On":"Off"}</span>`; }
 function bgSection(){
   const b=S.bg||{};
   const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false;
