@@ -39,7 +39,7 @@ const AVC = ["#ff6a13","#3a3a3f","#b8460b","#57534e","#d9570f","#26262a","#8a3a0
 function avatar(u, cls="", online=false){
   if(!u) u = {name:"?"};
   const ini = (u.name||u.username||"?").replace(/\(.*?\)/g,"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
-  const pal = document.documentElement.dataset.theme==="aqua" ? ["#0d9488","#1d6fd6","#0e7490","#2563eb","#0f766e","#334155","#0891b2"] : AVC;
+  const pal = AVC;
   const col = pal[[...(u.uid||u.name||"x")].reduce((a,c)=>a+c.charCodeAt(0),0)%pal.length];
   const st = u.photo ? `background-image:url('${u.photo}')` : `background:${col}`;
   return `<span class="av ${cls}" style="${st}">${u.photo?"":esc(ini)}${online?'<span class="dot"></span>':""}</span>`;
@@ -181,7 +181,7 @@ function makeFire(){
       const pc = sess.pc, offC = ref.collection("offerCandidates"), ansC = ref.collection("answerCandidates");
       const early = []; let ready = false; const addC = queueIce(pc, sess);
       pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
-      const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+      const offer = await pc.createOffer(); offer.sdp=tuneSdp(offer.sdp); await pc.setLocalDescription(offer);
       await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now()});
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
@@ -199,7 +199,7 @@ function makeFire(){
       const addC = queueIce(pc, sess);
       pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); ansC.add(e.candidate.toJSON()); };
       await pc.setRemoteDescription(new RTCSessionDescription(call.offer)); addC.flush();
-      const ans = await pc.createAnswer(); await pc.setLocalDescription(ans);
+      const ans = await pc.createAnswer(); ans.sdp=tuneSdp(ans.sdp); await pc.setLocalDescription(ans);
       await ref.update({answer:{type:ans.type,sdp:ans.sdp}, status:"active", answeredAt:Date.now()});
       sess.unsubs.push(offC.onSnapshot(s=>s.docChanges().forEach(c=>{ if(c.type==="added") addC(c.doc.data()); })));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(d && ["ended","missed"].includes(d.status)) sess.close("ended"); if(d) sess.onDoc && sess.onDoc(d); }));
@@ -315,10 +315,11 @@ const api = DEMO ? makeDemo() : makeFire();
 const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", ...p}; })();
 async function applyTheme(){
   let dark;
-  if(PREFS.theme==="lite"||PREFS.theme==="aqua"){   // lite: black bars · aqua: green-blue gradient bars; both light screens
+  if(PREFS.theme==="aqua"){ PREFS.theme="system"; savePrefs(); }
+  if(PREFS.theme==="lite"){   // classic: light screens with a black top bar and tabs
     document.documentElement.dataset.theme=PREFS.theme;
     try{ localStorage.setItem("xappTheme",PREFS.theme); }catch(e){}
-    const m=document.getElementById("themeColor"); if(m) m.content=PREFS.theme==="aqua"?"#11998e":"#0b0b0c";
+    const m=document.getElementById("themeColor"); if(m) m.content="#0b0b0c";
     nat("Background","setBars",{dark:true}); return;
   }
   if(PREFS.theme==="dark") dark=true;
@@ -496,13 +497,13 @@ function bgSection(){
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
   const swatch=(k,l,c)=>`<button class="tsw" role="radio" aria-checked="${PREFS.theme===k}" aria-label="${l}" title="${l}" data-set="theme:${k}"><span class="${c}"></span></button>`;
-  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite",aqua:"Aqua"}[PREFS.theme]||"System";
+  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite"}[PREFS.theme]||"System";
   L.innerHTML=`<div class="sp">
     <div class="sg"><button class="me2" data-set="profile">${avatar(u,"",false)}<span style="flex:1;min-width:0"><b>${esc(u.name)}</b><small>@${esc(u.username||"")}${u.about?" · "+esc(u.about):""}</small></span><span class="chev" style="color:var(--mute)">${ico("chev")}</span></button></div>
 
     <div class="sg-h">Appearance</div><div class="sg">
       <div class="sr"><span class="bd">${ico("moon")}</span><span class="tx"><b>Theme</b><small>${themeName}</small></span>
-        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("aqua","Aqua","t-aqua")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
+        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
     </div>
 
     <div class="sg-h">Calls</div><div class="sg">
@@ -875,7 +876,7 @@ function beep(){ if(!PREFS.sounds) return; try{ const ac=AC(), o=ac.createOscill
 
 async function getMedia(video){
   return navigator.mediaDevices.getUserMedia({
-    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,sampleRate:48000},
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,sampleRate:48000,channelCount:1},
     video: video ? {width:{ideal:1280},height:{ideal:720},frameRate:{ideal:30},facingMode:"user"} : false });
 }
 /* native bridge (APK): audio routing + back button */
@@ -979,7 +980,7 @@ function newSession(peer, video, outgoing){
       d.pairs=pairs; if(sel){ const l=c[sel.localCandidateId]||{}, r=c[sel.remoteCandidateId]||{}; d.selected=(l.candidateType||"")+"/"+(l.relayProtocol||l.protocol||"")+" -> "+(r.candidateType||"")+"/"+(r.protocol||""); } } }catch(e){ d.statsErr=String(e); }
     try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
     api.saveDiag("diagCall",d); };
-  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); drawCall("active");
+  sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); drawCall("active"); if(sess.pc) watchQuality(sess);
     route(sess).then(st=>{ if(st && st.btPermission===false && !PREFS.btAsked){ PREFS.btAsked=true; savePrefs(); nat("AudioRoute","requestBluetooth"); } });
     nat("Background","callState",{active:true, peer:(S.users[peer]||{}).name||"Xapp", video:!!video, startedAt:Date.now()});
     if(!api.demo) sess.giveUpT=setTimeout(()=>{ if(sess.connected||sess.closed) return; const p=$("#callSt");
@@ -998,7 +999,7 @@ function newSession(peer, video, outgoing){
     if(!on){ fixMic(sess); route(sess); toast("Call resumed"); } else toast("Call on hold");
     const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); };
   sess.onDoc=d=>{ const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
-  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); hideMini(); clearTimeout(sess.idleT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
+  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); hideMini(); clearTimeout(sess.idleT); clearInterval(sess.qT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
@@ -1059,6 +1060,51 @@ $("#call").addEventListener("click",e=>{ if(!call||!call.video||!call.startedAt)
   if(onControl) { wakeCall(); return; }
   const el=$("#call"); if(el.classList.contains("idle")) wakeCall(); else { el.classList.add("idle"); clearTimeout(call.idleT); } });
 natOn("AudioRoute","interruption",e=>{ if(call && call.startedAt && e) call.setHold(!!e.hold); });
+/* ---- call quality on weak connections ----
+   Opus voice: in-band error correction (FEC) so lost packets are rebuilt, mono, up to 32 kbps, comfort noise off.
+   Voice gets top network priority; video adapts (lower bitrate/resolution, then pauses) so the voice keeps going. */
+function tuneSdp(sdp){
+  const m=sdp.match(/a=rtpmap:(\d+) opus\/48000/i); if(!m) return sdp;
+  const pt=m[1], want={useinbandfec:"1",usedtx:"0",stereo:"0",maxaveragebitrate:"32000",maxplaybackrate:"48000"};
+  const re=new RegExp("a=fmtp:"+pt+" ([^\\r\\n]*)");
+  if(re.test(sdp)) return sdp.replace(re,(all,params)=>{ const kv={}; params.split(";").forEach(x=>{ const [k,v]=x.split("="); if(k) kv[k.trim()]=(v||"").trim(); }); Object.assign(kv,want); return "a=fmtp:"+pt+" "+Object.entries(kv).map(([k,v])=>k+"="+v).join(";"); });
+  return sdp.replace(m[0], m[0]+"\r\na=fmtp:"+pt+" "+Object.entries(want).map(([k,v])=>k+"="+v).join(";"));
+}
+function tuneSenders(pc, video){
+  pc.getSenders().forEach(snd=>{ if(!snd.track) return; try{
+    const p=snd.getParameters(); if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+    if(snd.track.kind==="audio"){ p.encodings[0].priority="high"; p.encodings[0].networkPriority="high"; p.encodings[0].maxBitrate=40000; }
+    else { p.encodings[0].priority="low"; p.encodings[0].networkPriority="low"; p.encodings[0].maxBitrate=900000; p.degradationPreference="balanced"; }
+    snd.setParameters(p).catch(()=>{});
+  }catch(e){} });
+  try{ const t=pc.getSenders().find(s=>s.track&&s.track.kind==="audio"); if(t&&t.track) t.track.contentHint="speech"; }catch(e){}
+}
+/* watch the line every 2 s: show signal bars, and step video down/up */
+function watchQuality(sess){
+  let last=null, level=3;
+  const steps=[{br:900000,scale:1},{br:450000,scale:1.5},{br:200000,scale:2},{br:90000,scale:3},{br:0,scale:4}];
+  sess.qT=setInterval(async()=>{
+    const pc=sess.pc; if(!pc||sess.closed) return clearInterval(sess.qT);
+    let lost=0, got=0, rtt=0, jitter=0;
+    try{ (await pc.getStats()).forEach(r=>{
+      if(r.type==="inbound-rtp"&&r.kind==="audio"){ lost=r.packetsLost||0; got=r.packetsReceived||0; jitter=r.jitter||0; }
+      if(r.type==="candidate-pair"&&r.nominated&&r.state==="succeeded") rtt=r.currentRoundTripTime||0; }); }catch(e){ return; }
+    let loss=0; if(last){ const dl=lost-last.lost, dg=got-last.got; loss=dl+dg>0?dl/(dl+dg):0; } last={lost,got};
+    const q = !sess.connected ? 1 : (loss>0.15||rtt>0.8) ? 1 : (loss>0.06||rtt>0.4||jitter>0.06) ? 2 : (loss>0.02||rtt>0.25) ? 3 : 4;
+    sess.quality=q; const n=$("#netQ"); if(n){ n.dataset.q=q; n.title=`Loss ${(loss*100).toFixed(0)}% · delay ${Math.round(rtt*1000)} ms`; }
+    if(!sess.video) return;
+    const prev=level;
+    if(q<=1) level=Math.min(steps.length-1, level+1); else if(q===2) level=Math.min(3, level+1); else if(q===4 && level>0) level--;
+    if(level===prev) return;
+    const snd=pc.getSenders().find(x=>x.track&&x.track.kind==="video"); if(!snd) return;
+    try{ const p=snd.getParameters(); if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+      const st=steps[level]; p.encodings[0].active = st.br>0; if(st.br>0){ p.encodings[0].maxBitrate=st.br; p.encodings[0].scaleResolutionDownBy=st.scale; }
+      await snd.setParameters(p); sess.log("video step "+level);
+      if(st.br===0 && !sess.videoPausedNote){ sess.videoPausedNote=true; toast("Weak connection: video paused to keep the voice clear"); }
+      if(st.br>0) sess.videoPausedNote=false;
+    }catch(e){}
+  },2000);
+}
 function micHelp(e){
   const name=(e&&e.name)||"", busy=/NotReadable|TrackStart|Abort/.test(name), missing=/NotFound|Overconstrained/.test(name);
   const sh=$("#sheet");
@@ -1081,6 +1127,7 @@ async function prepare(sess){
   if(!api.demo){
     const pc=new RTCPeerConnection({...ICE, iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
+    tuneSenders(pc, sess.video);
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
     pc.onicecandidateerror=e=>{ const k=e.errorCode+" "+(e.url||""); sess.diag.errs[k]=(sess.diag.errs[k]||0)+1; };
     pc.onconnectionstatechange=()=>sess.log("conn "+pc.connectionState);
@@ -1125,6 +1172,7 @@ function drawCall(state){
   const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
   el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
+    ${state==="active"?`<div class="net" id="netQ" data-q="${s.quality||4}" aria-label="Connection quality"><i></i><i></i><i></i><i></i><span>Weak connection</span></div>`:""}
     ${state!=="incoming"?`<button class="topb ibtn" id="kMin" aria-label="Minimise call: go to chats" title="Minimise">${ico("chevdown")}</button>`:""}
     <div class="info"><span class="enc" style="display:flex;align-items:center;gap:6px"><svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg>Xapp · end-to-end encrypted call</span>${avatar(u,"xl "+(state==="incoming"||state==="outgoing"?"pulse":""))}<h2>${esc(u.name)}</h2><p id="callSt">${state==="active"?callStatusText(s):label}</p></div>
     <div class="ctrls">${state==="incoming"

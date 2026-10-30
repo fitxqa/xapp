@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<script>try{var t=localStorage.getItem("xappTheme");if(t==="dark"||t==="light"||t==="lite"||t==="aqua")document.documentElement.dataset.theme=t;}catch(e){}</script>
+<script>try{var t=localStorage.getItem("xappTheme");if(t==="dark"||t==="light"||t==="lite")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <meta name="theme-color" content="#0b0b0c" id="themeColor">
 <link rel="icon" href="icon.png">
 <link rel="apple-touch-icon" href="icon.png">
@@ -61,27 +61,6 @@
     --field:#18181a; --field-line:#2b2b2f; --field-fg:#ffffff; --note-bg:#1c120b; --note-line:#4a2a14; --note-fg:#ffbe94;
     color-scheme:light;
 }
-:root[data-theme="aqua"]{
-    --head:#11998e; --head-fg:#ffffff; --head-mute:rgba(255,255,255,.78); --head-line:transparent; --head-hover:rgba(255,255,255,.16);
-    --bg:#eef6f6; --panel:#ffffff; --raise:#e2eff1; --line:#d2e3e6;
-    --fg:#0f2a33; --mute:#56707b; --orange:#0d9488; --orange-2:#1d6fd6; --on-orange:#ffffff;
-    --out:#d3f0ea; --in:#ffffff; --wall:#e6f1f2; --wall-dot:#d3e5e7;
-    --field:rgba(255,255,255,.16); --field-line:rgba(255,255,255,.34); --field-fg:#ffffff; --note-bg:rgba(255,255,255,.14); --note-line:rgba(255,255,255,.3); --note-fg:#ffffff;
-    --aqua-grad:linear-gradient(120deg,#12a58f 0%,#1489b8 55%,#1f63d6 100%);
-    color-scheme:light;
-}
-:root[data-theme="aqua"] .bar,:root[data-theme="aqua"] .tabs,:root[data-theme="aqua"] #login{background:var(--aqua-grad)}
-:root[data-theme="aqua"] .btn,:root[data-theme="aqua"] .fab,:root[data-theme="aqua"] .send{background:linear-gradient(120deg,#12a58f,#1f6fd6)}
-:root[data-theme="aqua"] #login .btn{background:#ffffff;color:#0e6f8c}
-:root[data-theme="aqua"] #login .swap{color:#ffffff}
-:root[data-theme="aqua"] .logo .mark g{fill:#ffffff}:root[data-theme="aqua"] .logo .mark path[stroke]{stroke:#1489b8}
-:root[data-theme="aqua"] .logo i{color:#bff5e9}
-:root[data-theme="aqua"] #login input::placeholder{color:rgba(255,255,255,.82)}
-:root[data-theme="aqua"] .about img{filter:hue-rotate(160deg) saturate(1.1)}
-:root[data-theme="aqua"] .tabs button[aria-selected="true"]{color:#ffffff}
-:root[data-theme="aqua"] .tabs button[aria-selected="true"] .ti{background:rgba(255,255,255,.22)}
-:root[data-theme="aqua"] .tabs .badge{background:#ffffff;color:#0e6f8c}
-:root[data-theme="aqua"] .bar .badge{background:#ffffff;color:#0e6f8c}
 :root[data-theme="lite"] .logo .mark{display:none}
 :root[data-theme="lite"] .logo{font-family:var(--f-display);font-weight:800;letter-spacing:.2px}
 :root[data-theme="lite"] .logo small{font-family:var(--f-body)}
@@ -162,7 +141,6 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .tsw .t-sys{background:linear-gradient(135deg,#ffffff 0 50%,#0b0b0c 50% 100%)}
 .tsw .t-light{background:#ffffff}.tsw .t-dark{background:#0b0b0c}
 .tsw .t-lite{background:linear-gradient(180deg,#0b0b0c 0 38%,#ffffff 38% 100%)}
-.tsw .t-aqua{background:linear-gradient(135deg,#12a58f,#1f63d6)}
 .about{display:flex;align-items:center;gap:12px;padding:12px 14px}
 .about img{width:42px;height:42px;flex:none}
 .about b{display:block;font-size:15.5px}.about small{display:block;color:var(--mute);font-size:12.5px;margin-top:1px}
@@ -348,6 +326,14 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 #call{position:fixed;inset:0;z-index:80;background:radial-gradient(120% 80% at 50% 0%,#2a1306 0%,#0b0b0c 60%);color:#fff;display:flex;flex-direction:column;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 40px) 20px calc(env(safe-area-inset-bottom,0px) + 36px)}
 #call video.remote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
 #call video.local{position:absolute;right:max(16px,env(safe-area-inset-right,0px));top:calc(env(safe-area-inset-top,0px) + 16px);width:110px;height:160px;object-fit:cover;border-radius:14px;border:2px solid rgba(255,255,255,.25);background:#111;transform:scaleX(-1);z-index:2}
+#call .net{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + 14px);z-index:4;display:flex;align-items:center;gap:6px;font-size:12px;color:#fff;background:rgba(0,0,0,.3);padding:5px 9px;border-radius:14px}
+#call .net i{display:inline-block;width:3px;border-radius:1px;background:rgba(255,255,255,.3)}
+#call .net i:nth-child(1){height:5px}#call .net i:nth-child(2){height:8px}#call .net i:nth-child(3){height:11px}#call .net i:nth-child(4){height:14px}
+#call .net[data-q="4"] i,#call .net[data-q="3"] i:nth-child(-n+3),#call .net[data-q="2"] i:nth-child(-n+2),#call .net[data-q="1"] i:nth-child(1){background:#3ccf6e}
+#call .net[data-q="2"] i:nth-child(-n+2){background:#f5b400}#call .net[data-q="1"] i:nth-child(1){background:#ff4d4d}
+#call .net span{display:none}#call .net[data-q="1"] span,#call .net[data-q="2"] span{display:inline}
+#call.idle .net:not([data-q="1"]):not([data-q="2"]){opacity:0}
+#call .net{transition:opacity .25s}
 #call .topb{position:absolute;left:max(10px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 8px);z-index:4;color:#fff;background:rgba(0,0,0,.25)}
 #call .ctrls,#call .info,#call .topb{transition:opacity .25s ease,transform .25s ease}
 #call.idle .ctrls{opacity:0;transform:translateY(24px);pointer-events:none}
@@ -366,7 +352,7 @@ body.incall .shell,body.incall #chatPane{padding-top:calc(env(safe-area-inset-to
 .pipn{bottom:22px;font-weight:600}.pipt{bottom:6px;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){.cbdot{animation:none}#call .ctrls,#call .info,#call .topb{transition:none}}
 #call .info{position:relative;z-index:2;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
-#call .info .enc{font-size:12px;color:#c9c2ba;letter-spacing:.5px}
+#call .info .enc{margin-top:22px;font-size:12px;color:#c9c2ba;letter-spacing:.5px}
 #call .info h2{font-family:var(--f-display);font-size:34px;margin:6px 0 0;font-weight:700;letter-spacing:.3px}
 #call .info p{margin:0;color:#ffb17f;font-variant-numeric:tabular-nums}
 #call.video-on .info{text-shadow:0 1px 6px rgba(0,0,0,.8)}
