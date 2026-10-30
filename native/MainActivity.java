@@ -15,10 +15,10 @@ public class MainActivity extends BridgeActivity {
     /** Call action from a notification tap, waiting for the web app to pick it up. */
     static volatile String pendingCallId = null, pendingAction = null;
 
-    @Override
     /** Set by the web app when its first screen is ready; until then Android's own splash stays up (one splash, no second icon). */
     static volatile boolean appReady = false;
 
+    @Override
     public void onCreate(Bundle savedInstanceState) {
         final long t0 = System.currentTimeMillis();
         try {
