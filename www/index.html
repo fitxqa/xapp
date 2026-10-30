@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <script>try{var t=localStorage.getItem("xappTheme");if(t==="dark"||t==="light"||t==="lite")document.documentElement.dataset.theme=t;}catch(e){}</script>
 <meta name="theme-color" content="#0b0b0c" id="themeColor">
 <link rel="icon" href="icon.png">
@@ -294,7 +294,7 @@ svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .err{color:var(--bad);font-size:13.5px;min-height:18px}
 
 /* login */
-#login{position:fixed;inset:0;z-index:60;background:var(--head);color:var(--head-fg);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px))}
+#login{position:fixed;inset:0;z-index:60;background:var(--head);color:var(--head-fg);display:flex;flex-direction:column;justify-content:safe center;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;align-items:center;padding:24px max(24px,env(safe-area-inset-right,0px)) 24px max(24px,env(safe-area-inset-left,0px))}
 #login .card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:12px}
 #login .logo{font-size:64px;justify-content:center;flex-direction:column;align-items:center;gap:16px}
 #login .logo .mark{width:1.35em;height:1.35em}
@@ -378,9 +378,9 @@ body.incall .shell,body.incall #chatPane{padding-top:calc(env(safe-area-inset-to
     <div class="logo"><svg class="mark" viewBox="70 60 380 380" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg><span><i>X</i><b>app</b></span><small>Chat · Call · Updates</small></div>
     <div style="height:14px"></div>
     <div class="demo" id="demoNote" hidden>Demo mode with sample contacts. Xapp goes live once its Firebase settings are added to config.js. Sign in with any username.</div>
-    <input id="lgName" placeholder="Your name" hidden autocomplete="name">
-    <input id="lgUser" placeholder="Email or username" required autocomplete="username" autocapitalize="none" inputmode="email">
-    <input id="lgPass" type="password" placeholder="Password (min 6)" required minlength="6" autocomplete="current-password">
+    <input id="lgName" placeholder="Your name" hidden autocomplete="name" enterkeyhint="next">
+    <input id="lgUser" type="text" placeholder="Email or username" required autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next">
+    <input id="lgPass" type="password" placeholder="Password (min 6)" required minlength="6" autocomplete="current-password" enterkeyhint="go">
     <div class="err" id="lgErr"></div>
     <button class="btn" type="submit" id="lgBtn">Sign in</button>
     <button class="swap" type="button" id="lgSwap">New here? Create account</button>

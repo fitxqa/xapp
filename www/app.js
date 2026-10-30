@@ -341,6 +341,9 @@ $("#tiChats").innerHTML=ico("chat"); $("#tiUpd").innerHTML=ico("updates"); $("#t
 /* =========================  AUTH  ========================= */
 let signupMode=false;
 $("#demoNote").hidden=!DEMO;
+/* keyboard-friendly login: Next moves on without closing the keyboard; the field you type in stays visible */
+["#lgName","#lgUser"].forEach((q,i,arr)=>{ $(q).addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); const nx=q==="#lgName"?"#lgUser":"#lgPass"; $(nx).focus(); } }); });
+["#lgName","#lgUser","#lgPass"].forEach(q=>$(q).addEventListener("focus",e=>{ setTimeout(()=>{ try{ e.target.scrollIntoView({block:"center",behavior:"smooth"}); }catch(_){} },320); }));
 $("#lgForgot").onclick=async()=>{ const u=$("#lgUser").value.trim();
   if(!u.includes("@")){ $("#lgErr").textContent="Type the email you signed up with, then tap Forgot password. Accounts made with only a username can't reset by email."; return; }
   try{ await api.resetPassword(u); $("#lgErr").textContent=""; toast("Password reset email sent to "+u); }

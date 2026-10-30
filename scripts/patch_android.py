@@ -26,7 +26,7 @@ app_parts = '''
     </application>'''
 m = m.replace("</application>", app_parts.lstrip("\n"), 1)
 # activity: portrait, show over lock screen, xapp:// links from the call notification
-m = m.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:screenOrientation="portrait"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"', 1)
+m = m.replace('android:name=".MainActivity"', 'android:name=".MainActivity"\n            android:screenOrientation="portrait"\n            android:windowSoftInputMode="adjustResize|stateHidden"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"', 1)
 m = re.sub(r'(<category android:name="android.intent.category.LAUNCHER" />\s*</intent-filter>)', r'''\1
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
