@@ -16,7 +16,15 @@ public class MainActivity extends BridgeActivity {
     static volatile String pendingCallId = null, pendingAction = null;
 
     @Override
+    /** Set by the web app when its first screen is ready; until then Android's own splash stays up (one splash, no second icon). */
+    static volatile boolean appReady = false;
+
     public void onCreate(Bundle savedInstanceState) {
+        final long t0 = System.currentTimeMillis();
+        try {
+            androidx.core.splashscreen.SplashScreen sp = androidx.core.splashscreen.SplashScreen.installSplashScreen(this);
+            sp.setKeepOnScreenCondition(() -> !appReady && System.currentTimeMillis() - t0 < 4000);
+        } catch (Exception ignored) {}
         registerPlugin(AudioRoutePlugin.class);
         registerPlugin(BackgroundPlugin.class);
         registerPlugin(LocationPlugin.class);

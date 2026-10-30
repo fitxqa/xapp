@@ -115,7 +115,11 @@ public class BackgroundPlugin extends Plugin {
         call.resolve();
     }
 
-    /** Is the phone in dark mode? */
+    /** The web app has drawn its first screen: let Android's splash go. */
+    @PluginMethod
+    public void appReady(PluginCall call) { MainActivity.appReady = true; call.resolve(); }
+
+        /** Is the phone in dark mode? */
     @PluginMethod
     public void isDark(PluginCall call) {
         int m = getContext().getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;

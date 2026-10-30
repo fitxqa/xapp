@@ -207,6 +207,7 @@ function makeFire(){
       sess.onActive();
     },
     declineCall(id){ return C("calls").doc(id).update({status:"declined"}).catch(()=>{}); },
+    markRinging(id){ return C("calls").doc(id).update({ringingAt:Date.now()}).catch(()=>{}); },
     async hideCalls(ids){   // removes calls from MY history only; the other person keeps theirs
       for(let i=0;i<ids.length;i+=400){ const b=db.batch(); ids.slice(i,i+400).forEach(id=>b.update(C("calls").doc(id),{hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)})); await b.commit(); }
     }
@@ -284,7 +285,7 @@ function makeDemo(){
     watchCalls(cb){ return on("calls",cb,get.calls); },
     watchIncoming(r,g){ ringCb=r; goneCb=g; return ()=>{}; },
     testIncoming(){ ringCb && ringCb({id:"in"+Date.now(),caller:"ahmed",callee:me,video:Math.random()>.5,status:"ringing",createdAt:Date.now(),demo:true}); },
-    async startCall(peer,video,sess){ sess.id="c"+Date.now(); const rec={id:sess.id,caller:me,callee:peer,video,status:"ringing",createdAt:Date.now()}; D.calls.push(rec); emit("calls",D.calls);
+    async startCall(peer,video,sess){ setTimeout(()=>{ if(!sess.startedAt&&!sess.closed) sess.onDoc&&sess.onDoc({ringingAt:Date.now()}); },900); sess.id="c"+Date.now(); const rec={id:sess.id,caller:me,callee:peer,video,status:"ringing",createdAt:Date.now()}; D.calls.push(rec); emit("calls",D.calls);
       sess.setStatus=st=>{ Object.assign(rec,st); emit("calls",D.calls); };
       sess.demoT=setTimeout(()=>{ rec.status="active"; rec.answeredAt=Date.now(); sess.onActive(); },2600); },
     async acceptCall(call,sess){ const rec={...call,status:"active",answeredAt:Date.now()}; D.calls.push(rec); sess.id=rec.id; sess.setStatus=st=>{ Object.assign(rec,st); emit("calls",D.calls); }; sess.onActive(); },
@@ -369,7 +370,7 @@ $("#loginForm").onsubmit=async e=>{
 };
 
 let subs=[];
-function hideBoot(){ const b=$("#boot"); if(!b||b.classList.contains("out")) return; requestAnimationFrame(()=>{ b.classList.add("out"); setTimeout(()=>b.remove(),260); }); }
+function hideBoot(){ nat("Background","appReady"); const b=$("#boot"); if(!b||b.classList.contains("out")) return; requestAnimationFrame(()=>{ b.classList.add("out"); setTimeout(()=>b.remove(),260); }); }
 setTimeout(hideBoot, 6000);   // never stay on the boot screen
 api.onAuth(user=>{
   hideBoot();
@@ -998,7 +999,9 @@ function newSession(peer, video, outgoing){
     sess.setStatus({holdBy: on ? S.me.uid : null}); sess.notify();
     if(!on){ fixMic(sess); route(sess); toast("Call resumed"); } else toast("Call on hold");
     const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); };
-  sess.onDoc=d=>{ const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
+  sess.onDoc=d=>{
+    if(d.ringingAt && !sess.peerRinging && !sess.startedAt){ sess.peerRinging=true; const p=$("#callSt"); if(p) p.textContent="Ringing…"; sess.log("peer ringing"); }
+    const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
   sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); hideMini(); clearTimeout(sess.idleT); clearInterval(sess.qT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
@@ -1154,6 +1157,7 @@ function incoming(c){
   if(call){ api.declineCall(c.id); return; }
   api.wantUsers([c.caller]);
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
+  api.markRinging && api.markRinging(c.id);   // tells the caller "Ringing…"
   const nativeRings = document.hidden && S.bg && S.bg.signedIn;
   if(!nativeRings) tone([[523,180],[659,180],[784,260],[0,900]]);
   applyCallAction();
@@ -1169,7 +1173,7 @@ function drawCall(state){
   const s=call; if(!s) return; const u=S.users[s.peer]||{uid:s.peer,name:"Contact"}; const el=$("#call");
   const showVid=s.video && (state==="active"||state==="outgoing"||state==="connecting") && s.local;
   el.classList.toggle("video-on",!!(s.video&&state==="active"));
-  const label={outgoing:"Ringing…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
+  const label={outgoing:s.peerRinging?"Ringing…":"Calling…",incoming:s.video?"Incoming video call":"Incoming voice call",connecting:"Connecting…",active:"0:00"}[state];
   el.innerHTML=`${s.video&&state==="active"?`<video class="remote" id="rv" autoplay playsinline muted></video>`:""}<audio id="ra" autoplay></audio>
     ${showVid?`<video class="local" id="lv" autoplay playsinline muted></video>`:""}
     ${state==="active"?`<div class="net" id="netQ" data-q="${s.quality||4}" aria-label="Connection quality"><i></i><i></i><i></i><i></i><span>Weak connection</span></div>`:""}

@@ -79,6 +79,6 @@ st=f"{res}/values/styles.xml"; t=open(st).read()
 import shutil
 os.makedirs(f"{res}/drawable-nodpi",exist_ok=True)
 shutil.copy("assets/splash-system-icon.png", f"{res}/drawable-nodpi/xapp_splash_icon.png")
-t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>\n        <item name="windowSplashScreenAnimatedIcon">@drawable/xapp_splash_icon</item>')
+t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>\n        <item name="windowSplashScreenAnimatedIcon">@drawable/xapp_splash_icon</item>\n        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>')
 open(st,"w").write(t)
 print("splash theme patched")

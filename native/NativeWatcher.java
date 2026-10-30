@@ -79,6 +79,7 @@ final class NativeWatcher {
                         final String caller = str(d.get("caller"), "");
                         withName(fs, caller, name -> {
                             ringing.put(id, new String[] { name, video ? "1" : "0" });
+                            try { d.getReference().update("ringingAt", System.currentTimeMillis()); } catch (Exception ignored) {}   // caller sees "Ringing…"
                             if (!MainActivity.inForeground) {
                                 CallNotifications.showIncoming(app, id, name, video);
                                 Map<String, Object> e = new HashMap<>(); e.put("lastRingShownAt", System.currentTimeMillis()); diag(fs, uid, e);
