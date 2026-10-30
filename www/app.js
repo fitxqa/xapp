@@ -1049,7 +1049,8 @@ function hideMini(){ ["#pip","#callbar"].forEach(q=>{ const e=$(q); if(e) e.remo
 function wakeCall(){ const el=$("#call"); el.classList.remove("idle"); if(!call||!call.video||!call.startedAt) return;
   clearTimeout(call.idleT); call.idleT=setTimeout(()=>{ if(call && !call.minimized && !$("#audMenu")) el.classList.add("idle"); },4000); }
 $("#call").addEventListener("click",e=>{ if(!call||!call.video||!call.startedAt) return;
-  if(e.target.closest(".ctrls,.topb,.audmenu,video.local")) { wakeCall(); return; }
+  const onControl=e.composedPath().some(n=>n.matches&&n.matches(".ctrls,.topb,.audmenu,video.local"));   // works even if the button redrew itself
+  if(onControl) { wakeCall(); return; }
   const el=$("#call"); if(el.classList.contains("idle")) wakeCall(); else { el.classList.add("idle"); clearTimeout(call.idleT); } });
 natOn("AudioRoute","interruption",e=>{ if(call && call.startedAt && e) call.setHold(!!e.hold); });
 function micHelp(e){

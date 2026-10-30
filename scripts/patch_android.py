@@ -68,3 +68,14 @@ android {
 '''
 open(G, "w").write(g)
 print("manifest + gradle patched;", m.count("uses-permission"), "permissions")
+
+# ---- one splash, symbol only (like WhatsApp): system splash colours match the in-app start screen ----
+import os
+res="android/app/src/main/res"
+for folder,col in (("values","#FFFFFF"),("values-night","#0B0B0C")):
+    os.makedirs(f"{res}/{folder}",exist_ok=True)
+    open(f"{res}/{folder}/xapp_splash.xml","w").write(f'<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="xapp_splash_bg">{col}</color></resources>\n')
+st=f"{res}/values/styles.xml"; t=open(st).read()
+t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>')
+open(st,"w").write(t)
+print("splash theme patched")

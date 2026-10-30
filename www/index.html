@@ -22,9 +22,9 @@
 @font-face{font-family:"Figtree";font-weight:600;font-display:swap;src:url(fonts/figtree-latin-600-normal.woff2) format("woff2")}
 @font-face{font-family:"Figtree";font-weight:700;font-display:swap;src:url(fonts/figtree-latin-700-normal.woff2) format("woff2")}
 @font-face{font-family:"Figtree";font-weight:900;font-display:swap;src:url(fonts/figtree-latin-900-normal.woff2) format("woff2")}
-#boot{position:fixed;inset:0;z-index:100;background:var(--head);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;transition:opacity .22s ease}
-#boot svg{width:92px;height:92px}
-#boot .bw{font:900 46px/1 var(--f-body);letter-spacing:-.04em;color:var(--head-fg)}#boot .bw i{font-style:normal;color:var(--orange)}
+#boot{position:fixed;inset:0;z-index:100;background:#ffffff;display:grid;place-items:center;transition:opacity .22s ease}
+#boot img{width:160px;height:160px;display:block}
+@media (prefers-color-scheme:dark){#boot{background:#0b0b0c}}
 #boot.out{opacity:0;pointer-events:none}
 /* Layout: black brand bar on top, list pane + chat pane (side by side on desktop, stacked screens on phone) */
 :root{
@@ -371,7 +371,7 @@ body.incall .shell,body.incall #chatPane{padding-top:calc(env(safe-area-inset-to
 </head>
 <body>
 
-<div id="boot" aria-label="Xapp is starting"><svg viewBox="70 60 380 380" aria-hidden="true"><g fill="#FF6A13"><circle cx="256" cy="246" r="168"/><path d="M150 336 C146 372 132 398 108 418 C150 420 196 404 230 372 Z"/></g><path d="M200 190 L312 302 M312 190 L200 302" stroke="#0B0B0C" stroke-width="38" stroke-linecap="round" fill="none"/></svg><div class="bw"><i>X</i>app</div></div>
+<div id="boot" aria-label="Xapp is starting"><img src="splash-icon.png" alt="" width="160" height="160"></div>
 <!-- LOGIN -->
 <section id="login" hidden>
   <form class="card" id="loginForm" autocomplete="on">
