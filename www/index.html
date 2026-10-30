@@ -23,7 +23,7 @@
 @font-face{font-family:"Figtree";font-weight:700;font-display:swap;src:url(fonts/figtree-latin-700-normal.woff2) format("woff2")}
 @font-face{font-family:"Figtree";font-weight:900;font-display:swap;src:url(fonts/figtree-latin-900-normal.woff2) format("woff2")}
 #boot{position:fixed;inset:0;z-index:100;background:#ffffff;display:grid;place-items:center;transition:opacity .22s ease}
-#boot img{width:160px;height:160px;display:block}
+#boot img{width:192px;height:192px;display:block}
 @media (prefers-color-scheme:dark){#boot{background:#0b0b0c}}
 #boot.out{opacity:0;pointer-events:none}
 /* Layout: black brand bar on top, list pane + chat pane (side by side on desktop, stacked screens on phone) */
@@ -371,7 +371,7 @@ body.incall .shell,body.incall #chatPane{padding-top:calc(env(safe-area-inset-to
 </head>
 <body>
 
-<div id="boot" aria-label="Xapp is starting"><img src="splash-icon.png" alt="" width="160" height="160"></div>
+<div id="boot" aria-label="Xapp is starting"><img src="splash-icon.png" alt="" width="192" height="192"></div>
 <!-- LOGIN -->
 <section id="login" hidden>
   <form class="card" id="loginForm" autocomplete="on">

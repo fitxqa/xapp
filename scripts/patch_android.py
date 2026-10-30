@@ -76,6 +76,9 @@ for folder,col in (("values","#FFFFFF"),("values-night","#0B0B0C")):
     os.makedirs(f"{res}/{folder}",exist_ok=True)
     open(f"{res}/{folder}/xapp_splash.xml","w").write(f'<?xml version="1.0" encoding="utf-8"?>\n<resources><color name="xapp_splash_bg">{col}</color></resources>\n')
 st=f"{res}/values/styles.xml"; t=open(st).read()
-t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>')
+import shutil
+os.makedirs(f"{res}/drawable-nodpi",exist_ok=True)
+shutil.copy("assets/splash-system-icon.png", f"{res}/drawable-nodpi/xapp_splash_icon.png")
+t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>\n        <item name="windowSplashScreenAnimatedIcon">@drawable/xapp_splash_icon</item>')
 open(st,"w").write(t)
 print("splash theme patched")
