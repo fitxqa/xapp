@@ -39,7 +39,8 @@ const AVC = ["#ff6a13","#3a3a3f","#b8460b","#57534e","#d9570f","#26262a","#8a3a0
 function avatar(u, cls="", online=false){
   if(!u) u = {name:"?"};
   const ini = (u.name||u.username||"?").replace(/\(.*?\)/g,"").trim().split(/\s+/).map(w=>w[0]).slice(0,2).join("").toUpperCase();
-  const col = AVC[[...(u.uid||u.name||"x")].reduce((a,c)=>a+c.charCodeAt(0),0)%AVC.length];
+  const pal = document.documentElement.dataset.theme==="aqua" ? ["#0d9488","#1d6fd6","#0e7490","#2563eb","#0f766e","#334155","#0891b2"] : AVC;
+  const col = pal[[...(u.uid||u.name||"x")].reduce((a,c)=>a+c.charCodeAt(0),0)%pal.length];
   const st = u.photo ? `background-image:url('${u.photo}')` : `background:${col}`;
   return `<span class="av ${cls}" style="${st}">${u.photo?"":esc(ini)}${online?'<span class="dot"></span>':""}</span>`;
 }
@@ -314,10 +315,10 @@ const api = DEMO ? makeDemo() : makeFire();
 const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", ...p}; })();
 async function applyTheme(){
   let dark;
-  if(PREFS.theme==="lite"){   // classic: light screens with a black top bar and tabs
-    document.documentElement.dataset.theme="lite";
-    try{ localStorage.setItem("xappTheme","lite"); }catch(e){}
-    const m=document.getElementById("themeColor"); if(m) m.content="#0b0b0c";
+  if(PREFS.theme==="lite"||PREFS.theme==="aqua"){   // lite: black bars · aqua: green-blue gradient bars; both light screens
+    document.documentElement.dataset.theme=PREFS.theme;
+    try{ localStorage.setItem("xappTheme",PREFS.theme); }catch(e){}
+    const m=document.getElementById("themeColor"); if(m) m.content=PREFS.theme==="aqua"?"#11998e":"#0b0b0c";
     nat("Background","setBars",{dark:true}); return;
   }
   if(PREFS.theme==="dark") dark=true;
@@ -422,7 +423,7 @@ function renderList(force){
   $("#fab").innerHTML = S.tab==="chats"?ico("chat"):S.tab==="calls"?ico("phone"):ico("text");
   $("#fab").setAttribute("aria-label", S.tab==="chats"?"New chat":S.tab==="calls"?"New call":"Text status");
 
-  const bgBanner = isNative()&&!api.demo&&S.bg&&!S.bg.signedIn ? `<button class="set" data-set="bgOn" style="background:rgba(255,106,19,.12)"><span class="si" style="color:var(--orange)">${ico("phone")}</span><span class="st"><b>Turn on background calls</b><small>So calls ring when Xapp is closed</small></span></button>` : "";
+  const bgBanner = isNative()&&!api.demo&&S.bg&&!S.bg.signedIn ? `<button class="set" data-set="bgOn" style="background:color-mix(in srgb,var(--orange) 12%,transparent)"><span class="si" style="color:var(--orange)">${ico("phone")}</span><span class="st"><b>Turn on background calls</b><small>So calls ring when Xapp is closed</small></span></button>` : "";
   if(S.tab==="chats"){
     const rows=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const u=S.users[peerOf(c)]||{uid:peerOf(c),name:"Contact"};
       if(q && !(u.name||"").toLowerCase().includes(q) && !(c.last||"").toLowerCase().includes(q)) return "";
@@ -478,7 +479,7 @@ function srow(act,icon,title,opt={}){
   const right = opt.right!==undefined ? opt.right : `<span class="chev">${ico("chev")}</span>`;
   return `<button class="sr${opt.danger?" danger":""}" data-set="${act}"><span class="bd">${ico(icon)}</span><span class="tx"><b>${title}</b>${opt.sub?`<small class="${opt.warn?"warn":""}">${opt.sub}</small>`:""}</span>${opt.val?`<span class="vl">${opt.val}</span>`:""}${right}</button>`;
 }
-function state(on){ return `<span class="vl"><span class="dot ${on?"":"off"}"></span>${on?"On":"Off"}</span>`; }
+function state(on){ return `<span class="switch ${on?"on":""}" role="switch" aria-checked="${!!on}"></span>`; }
 function bgSection(){
   const b=S.bg||{};
   const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false;
@@ -495,13 +496,13 @@ function bgSection(){
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
   const swatch=(k,l,c)=>`<button class="tsw" role="radio" aria-checked="${PREFS.theme===k}" aria-label="${l}" title="${l}" data-set="theme:${k}"><span class="${c}"></span></button>`;
-  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite"}[PREFS.theme]||"System";
+  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite",aqua:"Aqua"}[PREFS.theme]||"System";
   L.innerHTML=`<div class="sp">
     <div class="sg"><button class="me2" data-set="profile">${avatar(u,"",false)}<span style="flex:1;min-width:0"><b>${esc(u.name)}</b><small>@${esc(u.username||"")}${u.about?" · "+esc(u.about):""}</small></span><span class="chev" style="color:var(--mute)">${ico("chev")}</span></button></div>
 
     <div class="sg-h">Appearance</div><div class="sg">
       <div class="sr"><span class="bd">${ico("moon")}</span><span class="tx"><b>Theme</b><small>${themeName}</small></span>
-        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
+        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("aqua","Aqua","t-aqua")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
     </div>
 
     <div class="sg-h">Calls</div><div class="sg">
@@ -516,7 +517,9 @@ function renderSettings(L){
     </div>
 
     <div class="sg-h">About</div><div class="sg">
-      ${srow("about","info","Xapp",{val:`<span id="appVer">v${esc(APP_VERSION)}</span>`,right:""})}
+      <div class="about"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
+    </div>
+    <div class="sg-h">Account</div><div class="sg">
       ${srow("contactsTab","users","Contacts",{val:String(myContacts().length)})}
       ${srow("logout","logout","Sign out",{danger:true,right:""})}
     </div>
@@ -527,7 +530,7 @@ const APP_VERSION="1.0";
 $("#list").onclick=e=>{
   if(e.target.closest("[data-add]")) return openAddContact();
   const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
-    if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme(); renderList(true); return; }
+    if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme().then(()=>{ renderList(true); if(S.peer) renderChatHead(); }); return; }
     if(a==="profile") return openProfile();
     if(a==="net") return netTest();
     if(a==="bgOn") return (S.bg&&S.bg.signedIn)?toast("Background calls are already on"):bgPasswordSheet();
