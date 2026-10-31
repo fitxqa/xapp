@@ -980,6 +980,8 @@ function newSession(peer, video, outgoing){
         if(s.type==="inbound-rtp"&&s.kind==="audio") d.audioInBytes=s.bytesReceived; if(s.type==="outbound-rtp"&&s.kind==="audio") d.audioOutBytes=s.bytesSent; });
       d.pairs=pairs; if(sel){ const l=c[sel.localCandidateId]||{}, r=c[sel.remoteCandidateId]||{}; d.selected=(l.candidateType||"")+"/"+(l.relayProtocol||l.protocol||"")+" -> "+(r.candidateType||"")+"/"+(r.protocol||""); } } }catch(e){ d.statsErr=String(e); }
     try{ const i=await nat("App","getInfo"); if(i&&i.version) d.app=i.version; }catch(e){}
+    if(sess.qhist&&sess.qhist.length){ const h=sess.qhist, avg=i=>Math.round(h.reduce((a,x)=>a+x[i],0)/h.length), mx=i=>Math.max(...h.map(x=>x[i]));
+      d.quality={samples:h.length, rttAvg:avg(0), rttMax:mx(0), lossAvg:avg(1), lossMax:mx(1), jitterAvg:avg(2), route:sess.diag.route}; }
     api.saveDiag("diagCall",d); };
   sess.onActive=()=>{ if(sess.startedAt) return; sess.startedAt=Date.now(); stopTone(); drawCall("active"); if(sess.pc) watchQuality(sess);
     route(sess).then(st=>{ if(st && st.btPermission===false && !PREFS.btAsked){ PREFS.btAsked=true; savePrefs(); nat("AudioRoute","requestBluetooth"); } });
@@ -1082,17 +1084,40 @@ function tuneSenders(pc, video){
   }catch(e){} });
   try{ const t=pc.getSenders().find(s=>s.track&&s.track.kind==="audio"); if(t&&t.track) t.track.contentHint="speech"; }catch(e){}
 }
+function renderNetInfo(sess){
+  const p=$("#netInfo"); if(!p||!sess.stats) return; const st=sess.stats;
+  const good=(v,a,b)=>v<=a?"ok":v<=b?"mid":"bad";
+  p.innerHTML=`<b>Call quality</b>
+    <div><span>Route</span><em>${esc(st.route)}${st.proto?" · "+esc(st.proto):""}</em></div>
+    <div><span>Delay</span><em class="${good(st.rtt,150,350)}">${st.rtt} ms</em></div>
+    <div><span>Packet loss</span><em class="${good(st.loss,2,8)}">${st.loss}%</em></div>
+    <div><span>Jitter</span><em class="${good(st.jitter,30,60)}">${st.jitter} ms</em></div>
+    <div><span>Voice in / out</span><em>${st.inKbps} / ${st.outKbps} kbps</em></div>
+    <small>Good: delay under 150 ms, loss under 2%. Tap to close.</small>`;
+}
 /* watch the line every 2 s: show signal bars, and step video down/up */
 function watchQuality(sess){
   let last=null, level=3;
   const steps=[{br:900000,scale:1},{br:450000,scale:1.5},{br:200000,scale:2},{br:90000,scale:3},{br:0,scale:4}];
   sess.qT=setInterval(async()=>{
     const pc=sess.pc; if(!pc||sess.closed) return clearInterval(sess.qT);
-    let lost=0, got=0, rtt=0, jitter=0;
+    let lost=0, got=0, rtt=0, jitter=0, inB=0, outB=0, pair=null; const cands={};
     try{ (await pc.getStats()).forEach(r=>{
-      if(r.type==="inbound-rtp"&&r.kind==="audio"){ lost=r.packetsLost||0; got=r.packetsReceived||0; jitter=r.jitter||0; }
-      if(r.type==="candidate-pair"&&r.nominated&&r.state==="succeeded") rtt=r.currentRoundTripTime||0; }); }catch(e){ return; }
-    let loss=0; if(last){ const dl=lost-last.lost, dg=got-last.got; loss=dl+dg>0?dl/(dl+dg):0; } last={lost,got};
+      if(r.type==="inbound-rtp"&&r.kind==="audio"){ lost=r.packetsLost||0; got=r.packetsReceived||0; jitter=r.jitter||0; inB=r.bytesReceived||0; }
+      if(r.type==="outbound-rtp"&&r.kind==="audio") outB=r.bytesSent||0;
+      if(r.type==="local-candidate"||r.type==="remote-candidate") cands[r.id]=r;
+      if(r.type==="candidate-pair"&&r.nominated&&r.state==="succeeded"){ rtt=r.currentRoundTripTime||0; pair=r; } }); }catch(e){ return; }
+    const L=pair&&cands[pair.localCandidateId]||{}, Rm=pair&&cands[pair.remoteCandidateId]||{};
+    const relayed = L.candidateType==="relay"||Rm.candidateType==="relay";
+    const relayUrl = (L.candidateType==="relay" ? (L.url||"") : "") || "";
+    const now=Date.now(), dt=last&&last.t ? (now-last.t)/1000 : 0;
+    sess.stats={ route: relayed ? "Relay"+(relayUrl?" · "+relayUrl.replace(/^turns?:/,"").replace(/\?.*/,""):" (other side)") : "Direct (phone to phone)",
+      proto:(L.relayProtocol||L.protocol||"").toUpperCase(), rtt:Math.round(rtt*1000), jitter:Math.round(jitter*1000),
+      inKbps: dt? Math.round((inB-(last.inB||0))*8/dt/1000):0, outKbps: dt? Math.round((outB-(last.outB||0))*8/dt/1000):0 };
+    const hist=sess.qhist||(sess.qhist=[]); 
+    let loss=0; if(last){ const dl=lost-last.lost, dg=got-last.got; loss=dl+dg>0?dl/(dl+dg):0; } last={lost,got,inB,outB,t:now};
+    sess.stats.loss=Math.round(loss*100); hist.push([sess.stats.rtt,sess.stats.loss,sess.stats.jitter]); if(hist.length>300) hist.shift();
+    sess.diag.route=sess.stats.route+" "+sess.stats.proto; renderNetInfo(sess);
     const q = !sess.connected ? 1 : (loss>0.15||rtt>0.8) ? 1 : (loss>0.06||rtt>0.4||jitter>0.06) ? 2 : (loss>0.02||rtt>0.25) ? 3 : 4;
     sess.quality=q; const n=$("#netQ"); if(n){ n.dataset.q=q; n.title=`Loss ${(loss*100).toFixed(0)}% · delay ${Math.round(rtt*1000)} ms`; }
     if(!sess.video) return;
@@ -1187,6 +1212,9 @@ function drawCall(state){
   const lv=$("#lv"); if(lv&&s.local){ lv.srcObject=s.local; makeDraggable(lv); }
   const km=$("#kMin"); if(km) km.onclick=e=>{ e.stopPropagation(); if(s.startedAt) minimizeCall(); else toast("You can minimise once the call is answered"); };
   if(state==="active") wakeCall();
+  const nq=$("#netQ"); if(nq) nq.onclick=e=>{ e.stopPropagation(); let p=$("#netInfo");
+    if(p){ p.remove(); return; } p=document.createElement("div"); p.id="netInfo"; p.className="netinfo"; p.onclick=ev=>{ ev.stopPropagation(); p.remove(); };
+    $("#call").appendChild(p); if(s.stats) renderNetInfo(s); else p.innerHTML="<b>Call quality</b><small>Measuring…</small>"; wakeCall(); };
   attachRemote(s);
   if(state==="incoming"){ $("#kDec").onclick=()=>{ api.declineCall(s.inc.id); s.close("declined"); }; $("#kAns").onclick=answer; return; }
   $("#kEnd").onclick=()=>s.hangup();

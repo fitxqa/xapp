@@ -37,7 +37,7 @@ try:
         c = f.get("diagCall")
         if c:
             age = int((now - c.get("at", 0)) / 60000)
-            keep = {k: c.get(k) for k in ("role","video","end","connected","secs","relays","local","remote","errs","pairs","selected","audioInBytes","audioOutBytes","app","statsErr")}
+            keep = {k: c.get(k) for k in ("role","video","end","connected","secs","quality","selected","pairs","errs","audioInBytes","audioOutBytes","app")}
             print(f"::notice title=CALL {who} {age} min ago::{json.dumps(keep)} · EVENTS: {' / '.join(c.get('ev', []))}")
         ap = f.get("diagApp")
         if ap:
