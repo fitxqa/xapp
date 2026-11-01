@@ -47,7 +47,7 @@ jobs:
             if(e.TU&&e.TP){ const s="free.expressturn.com:3478";
               t.push({urls:["turn:"+s,"turn:"+s+"?transport=tcp"],username:e.TU,credential:e.TP}); }
             if(t.length) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.turn = "+JSON.stringify(t)+";\n");
-            if(e.CW) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.cfWorker = "+JSON.stringify({url:e.CW.trim(),key:(e.CK||"").trim()})+";\n");
+            if(e.CW) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.cfWorker = "+JSON.stringify({url:(/^https?:/.test(e.CW.trim())?"":"https://")+e.CW.trim(),key:(e.CK||"").trim()})+";\n");
             console.log(e.CW ? "Cloudflare relay (Doha) added" : "::warning::XAPP_CF_WORKER secret missing — Cloudflare relay not used");
             console.log("Relay servers added: "+t.length+(e.MU?" (Metered)":"")+(e.TU?" (ExpressTURN)":""));
             if(!t.length) console.log("::warning::No relay secrets — calls on mobile data may not connect.");'

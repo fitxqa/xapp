@@ -59,7 +59,9 @@ cf_urls=[]
 if E.get("CW"):
     import urllib.request
     try:
-        req=urllib.request.Request(E["CW"].strip(), headers={"x-app-key":E.get("CK","").strip(),"User-Agent":"xapp-check"})
+        cw=E["CW"].strip().rstrip("/"); cw = cw if cw.startswith("http") else "https://"+cw
+        E["CW"]=cw
+        req=urllib.request.Request(cw, headers={"x-app-key":E.get("CK","").strip(),"User-Agent":"xapp-check"})
         try:
             resp=urllib.request.urlopen(req,timeout=15); body=resp.read().decode("utf-8","replace"); code=resp.status
         except urllib.error.HTTPError as he:
