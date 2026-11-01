@@ -8,8 +8,20 @@
  *   TURN_KEY_API_TOKEN  = the "API Token" shown when you created it
  *   APP_KEY             = any password you choose (Xapp sends it; others are refused)
  */
+// ===== Put your values here (between the quotes). Secrets added in Settings also work and win if both are set. =====
+const MY_TURN_KEY_ID        = "PASTE_TURN_TOKEN_ID_HERE";
+const MY_TURN_KEY_API_TOKEN = "PASTE_API_TOKEN_HERE";
+const MY_APP_KEY            = "PASTE_YOUR_APP_KEY_HERE";   // same as XAPP_CF_KEY in GitHub
+// ==================================================================================================================
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env0) {
+    const real = v => v && !String(v).startsWith("PASTE_") ? String(v).trim() : "";
+    const env = {
+      TURN_KEY_ID: real(env0.TURN_KEY_ID) || real(MY_TURN_KEY_ID),
+      TURN_KEY_API_TOKEN: real(env0.TURN_KEY_API_TOKEN) || real(MY_TURN_KEY_API_TOKEN),
+      APP_KEY: real(env0.APP_KEY) || real(MY_APP_KEY)
+    };
     const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "x-app-key, content-type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json({ error: "Worker secrets missing" }, 500, cors);
