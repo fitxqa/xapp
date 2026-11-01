@@ -55,6 +55,20 @@ if E.get("TU") and E.get("TP"):
     h = "free.expressturn.com"
     servers.append(("ExpressTURN", E["TU"], E["TP"], [(h,3478,"udp"),(h,3478,"tcp")],
         [f"turn:{h}:3478", f"turn:{h}:3478?transport=tcp"]))
+cf_urls=[]
+if E.get("CW"):
+    import urllib.request
+    try:
+        req=urllib.request.Request(E["CW"].strip(), headers={"x-app-key":E.get("CK","").strip(),"User-Agent":"xapp-check"})
+        d=json.load(urllib.request.urlopen(req,timeout=15))
+        t=[x for x in d.get("iceServers",[]) if x.get("username")]
+        if t:
+            cf_urls=[u for u in t[0]["urls"] if u.startswith("turn")]
+            servers.append(("Cloudflare", t[0]["username"], t[0]["credential"], [], cf_urls))
+            print(f"::notice title=Cloudflare worker::OK, {len(cf_urls)} relay routes")
+        else: print("::warning title=Cloudflare worker::answered but no relay in reply: "+json.dumps(d)[:200])
+    except Exception as e:
+        print(f"::warning title=Cloudflare worker::FAILED {type(e).__name__}: {e}")
 if not servers: print("::error::No relay secrets available to this workflow"); sys.exit(1)
 
 summary = []

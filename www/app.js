@@ -387,6 +387,7 @@ api.onAuth(user=>{
   subs.push(api.watchIncoming(incoming, gone));
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
+  cfIce();
   api.ping(); clearInterval(S.pingT); S.pingT=setInterval(()=>{ if(!document.hidden) api.ping(); },60000);
 });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ api.ping(); if(S.peer) api.markRead(S.peer); } });
@@ -840,9 +841,9 @@ function gatherWith(cfg, ms){
   });
 }
 async function netTest(){
-  const sh=$("#sheet");
+  const sh=$("#sheet"); window._cfTest=await cfIce();
   const tests=[{key:"stun", label:"Internet address (STUN)", cfg:{iceServers:[{urls:"stun:stun.l.google.com:19302"}]}}];
-  (CFG.turn||[]).forEach(t=>[].concat(t.urls).forEach(u=>tests.push({key:u, label:u.replace(/^turns?:/,"").replace("?transport="," · ")+(u.startsWith("turns:")?" · TLS":""), cfg:{iceServers:[{urls:u,username:t.username,credential:t.credential}],iceTransportPolicy:"relay"}})));
+  ([...(window._cfTest||[]), ...(CFG.turn||[])]).filter(t=>t.username).forEach(t=>[].concat(t.urls).forEach(u=>tests.push({key:u, label:u.replace(/^turns?:/,"").replace("?transport="," · ")+(u.startsWith("turns:")?" · TLS":""), cfg:{iceServers:[{urls:u,username:t.username,credential:t.credential}],iceTransportPolicy:"relay"}})));
   const res={};
   const icon=ok=>`<span class="av sm" style="background:${ok===undefined?"var(--raise)":ok?"var(--good)":"var(--bad)"};font-size:15px;width:34px;height:34px">${ok===undefined?"…":ok?"✓":"✕"}</span>`;
   const why=(r,stun)=>{ if(!r) return "Testing…"; if(stun) return r.types.srflx?"OK · public address found":"No public address (STUN blocked on this network)";
@@ -1147,13 +1148,28 @@ function micHelp(e){
   sh.hidden=false; sh.onclick=ev=>{ if(ev.target.closest("[data-close]")) sh.hidden=true; };
   const b=$("#micOpen"); if(b) b.onclick=()=>{ sh.hidden=true; nat("Background","openAppInfo"); };
 }
+/* Cloudflare relay (nearest data centre — Doha inside Qatar): fresh logins from the Xapp Worker, cached ~10 h */
+async function cfIce(){
+  const w=CFG.cfWorker; if(!w||!w.url) return [];
+  try{ const c=JSON.parse(localStorage.getItem("xappCfIce")||"null"); if(c && c.exp>Date.now()) return c.ice; }catch(e){}
+  try{
+    const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),3500);
+    const r=await fetch(w.url,{headers:{"x-app-key":w.key||""},signal:ctl.signal}); clearTimeout(t);
+    if(!r.ok) return [];
+    const d=await r.json(); const ice=(d.iceServers||[]).filter(x=>x&&x.urls);
+    try{ localStorage.setItem("xappCfIce",JSON.stringify({ice, exp:Date.now()+Math.min((d.ttl||43200)*1000-2*3600e3, 10*3600e3)})); }catch(e){}
+    return ice;
+  }catch(e){ return []; }
+}
+function iceWith(cf){ return {...ICE, iceServers:[...cf, ...ICE.iceServers]}; }   // Cloudflare first, the others as backup
 async function prepare(sess){
   let mediaErr=null;
   try{ sess.local=await getMedia(sess.video); sess.log("media ok "+sess.local.getTracks().map(t=>t.kind).join("+")); }
   catch(e){ mediaErr=e; sess.log("media err "+(e&&e.name)); if(sess.video){ try{ sess.local=await getMedia(false); sess.video=false; toast("Camera unavailable. Switched to voice."); }catch(e2){} } }
   if(!sess.local){ sess.log("no media"); sess.saveDiag("no-media"); micHelp(mediaErr); return false; }
   if(!api.demo){
-    const pc=new RTCPeerConnection({...ICE, iceCandidatePoolSize:2}); sess.pc=pc;
+    const cf=await cfIce(); sess.diag.cf=cf.length>0;
+    const pc=new RTCPeerConnection({...iceWith(cf), iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
     tuneSenders(pc, sess.video);
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };

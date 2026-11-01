@@ -22,4 +22,6 @@ jobs:
           TP: ${{ secrets.XAPP_TURN_PASS }}
           MU: ${{ secrets.XAPP_METERED_USER }}
           MP: ${{ secrets.XAPP_METERED_PASS }}
+          CW: ${{ secrets.XAPP_CF_WORKER }}
+          CK: ${{ secrets.XAPP_CF_KEY }}
         run: python scripts/turn_check.py
