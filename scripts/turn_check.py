@@ -1,7 +1,7 @@
 """Checks every relay (TURN) server Xapp uses. Run on GitHub Actions with the relay secrets in the environment.
 1) TURN login (Allocate) over UDP, TCP and TLS.  2) A real WebRTC connection forced through each relay (headless Chrome).
 Prints results as GitHub notices. Never prints usernames or passwords."""
-import os, socket, ssl, struct, hashlib, hmac, json, sys
+import os, socket, ssl, struct, hashlib, hmac, json, sys, urllib.error
 MAGIC = 0x2112A442
 def attr(t, v): return struct.pack("!HH", t, len(v)) + v + b"\0" * ((4 - len(v) % 4) % 4)
 def msg(mtype, attrs, key=None):
@@ -60,7 +60,18 @@ if E.get("CW"):
     import urllib.request
     try:
         req=urllib.request.Request(E["CW"].strip(), headers={"x-app-key":E.get("CK","").strip(),"User-Agent":"xapp-check"})
-        d=json.load(urllib.request.urlopen(req,timeout=15))
+        try:
+            resp=urllib.request.urlopen(req,timeout=15); body=resp.read().decode("utf-8","replace"); code=resp.status
+        except urllib.error.HTTPError as he:
+            body=he.read().decode("utf-8","replace"); code=he.code
+        u=E["CW"].strip(); shown=(u[:8]+"…"+u[-14:]) if len(u)>24 else u
+        if not body.lstrip().startswith("{"):
+            import re as _re
+            title=_re.search(r"<title>(.*?)</title>",body,_re.S|_re.I)
+            print(f"::warning title=Cloudflare worker::HTTP {code} from {shown} · not JSON · starts with: {body.strip()[:60]!r} · page title: {title.group(1).strip()[:80] if title else '-'}")
+            raise SystemExit(0) if False else ValueError("not json")
+        d=json.loads(body)
+        if "error" in d: print(f"::warning title=Cloudflare worker::HTTP {code} · worker says: {d['error']}")
         t=[x for x in d.get("iceServers",[]) if x.get("username")]
         if t:
             cf_urls=[u for u in t[0]["urls"] if u.startswith("turn")]
