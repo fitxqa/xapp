@@ -24,8 +24,9 @@ export default {
     };
     const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "x-app-key, content-type", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
-    if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) return json({ error: "Worker secrets missing" }, 500, cors);
-    if (env.APP_KEY && request.headers.get("x-app-key") !== env.APP_KEY) return json({ error: "forbidden" }, 403, cors);
+    const missing = ["TURN_KEY_ID", "TURN_KEY_API_TOKEN"].filter(k => !env[k]);
+    if (missing.length) return json({ error: "missing: " + missing.join(", "), version: 3, tip: "Fill the MY_... lines at the top of the code, then Deploy" }, 500, cors);
+    if (env.APP_KEY && request.headers.get("x-app-key") !== env.APP_KEY) return json({ error: "forbidden", version: 3, ok: "Worker is set up. This browser has no app key, which is expected." }, 403, cors);
 
     const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`, {
       method: "POST",
