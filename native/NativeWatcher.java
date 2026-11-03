@@ -82,6 +82,14 @@ final class NativeWatcher {
                             try { d.getReference().update("ringingAt", System.currentTimeMillis()); } catch (Exception ignored) {}   // caller sees "Ringing…"
                             if (!MainActivity.inForeground) {
                                 CallNotifications.showIncoming(app, id, name, video);
+                                if (Build.VERSION.SDK_INT < 23 || android.provider.Settings.canDrawOverlays(app)) {
+                                    try {   // pop the Xapp call screen straight up, like WhatsApp
+                                        android.content.Intent ci = new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("xapp://call?id=" + android.net.Uri.encode(id) + "&action=open"), app, MainActivity.class);
+                                        ci.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                                        app.startActivity(ci);
+                                    } catch (Exception ignored) {}
+                                }
                                 Map<String, Object> e = new HashMap<>(); e.put("lastRingShownAt", System.currentTimeMillis()); diag(fs, uid, e);
                             }
                         });

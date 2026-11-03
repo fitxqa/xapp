@@ -74,6 +74,15 @@ public class BackgroundPlugin extends Plugin {
         boolean fs = true;
         if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = ctx.getSystemService(NotificationManager.class); fs = nm != null && nm.canUseFullScreenIntent(); }
         r.put("fullScreenAllowed", fs);
+        r.put("overlay", Build.VERSION.SDK_INT < 23 || Settings.canDrawOverlays(ctx));
+        boolean pop = true;
+        if (Build.VERSION.SDK_INT >= 26) {
+            CallNotifications.ensureChannels(ctx);
+            NotificationManager nm = ctx.getSystemService(NotificationManager.class);
+            android.app.NotificationChannel ch = nm != null ? nm.getNotificationChannel(CallNotifications.CH_CALLS) : null;
+            pop = ch == null || ch.getImportance() >= NotificationManager.IMPORTANCE_HIGH;
+        }
+        r.put("callPopup", pop);
         call.resolve(r);
     }
 
@@ -219,6 +228,7 @@ public class BackgroundPlugin extends Plugin {
                 tg = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80);
                 ok = tg.startTone(ToneGenerator.TONE_SUP_RINGTONE);   // 1 s ring, 4 s pause, repeating
             } else {
+                CallNotifications.cancelIncoming(ctx);   // the call screen is showing: one ringtone, not two
                 int mode = am != null ? am.getRingerMode() : AudioManager.RINGER_MODE_NORMAL;
                 if (mode == AudioManager.RINGER_MODE_NORMAL) {
                     Uri u = RingtoneManager.getActualDefaultRingtoneUri(ctx, RingtoneManager.TYPE_RINGTONE);
@@ -265,5 +275,30 @@ public class BackgroundPlugin extends Plugin {
                     if (CallNotifications.CH_MISSED.equals(n.getNotification().getChannelId())) nm.cancel(n.getTag(), n.getId());
         } catch (Exception ignored) {}
         call.resolve();
+    }
+
+    /** "Display over other apps": lets the call screen pop up by itself. */
+    @PluginMethod
+    public void openOverlaySettings(PluginCall call) {
+        try {
+            Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getContext().getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+        } catch (Exception e) { openAppSettings(); }
+        call.resolve();
+    }
+
+    /** The "Incoming calls" notification category: Pop on screen / Alerting must be on. */
+    @PluginMethod
+    public void openCallChannel(PluginCall call) {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                CallNotifications.ensureChannels(getContext());
+                Intent i = new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName())
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, CallNotifications.CH_CALLS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(i); call.resolve(); return;
+            }
+        } catch (Exception ignored) {}
+        openAppSettings(); call.resolve();
     }
 }

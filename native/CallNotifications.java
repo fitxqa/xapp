@@ -11,6 +11,7 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.Person;
 
 /** Full-screen ringing call notification, missed calls and message notifications. */
 public final class CallNotifications {
@@ -54,11 +55,20 @@ public final class CallNotifications {
             .setPriority(NotificationCompat.PRIORITY_MAX).setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC).setColor(0xFFFF6A13)
             .setOngoing(true).setAutoCancel(true).setTimeoutAfter(45000)
-            .setContentIntent(full).setFullScreenIntent(full, true)
-            .addAction(0, "Decline", open(ctx, callId, "decline", 2))
-            .addAction(0, "Answer", open(ctx, callId, "answer", 3));
+            .setContentIntent(full).setFullScreenIntent(full, true);
         if (Build.VERSION.SDK_INT < 26) { b.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)); b.setVibrate(new long[] { 0, 800, 600, 800, 600 }); }
-        Notification n = b.build();
+        Notification n;
+        try {
+            // Android's call style: big Answer / Decline buttons and the phone treats it as a real call pop-up
+            Person who = new Person.Builder().setName(fromName).setImportant(true).build();
+            b.setStyle(NotificationCompat.CallStyle.forIncomingCall(who, open(ctx, callId, "decline", 2), open(ctx, callId, "answer", 3)));
+            n = b.build();
+        } catch (Exception e) {
+            b.setStyle(null).clearActions()
+                .addAction(0, "Decline", open(ctx, callId, "decline", 2))
+                .addAction(0, "Answer", open(ctx, callId, "answer", 3));
+            n = b.build();
+        }
         n.flags |= Notification.FLAG_INSISTENT;   // keep ringing until answered, declined or cancelled
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(ID_INCOMING, n);

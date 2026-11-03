@@ -491,13 +491,15 @@ function srow(act,icon,title,opt={}){
 function state(on){ return `<span class="vl"><span class="dot ${on?"":"off"}"></span>${on?"On":"Off"}</span>`; }
 function bgSection(){
   const b=S.bg||{};
-  const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false;
+  const allOk=b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false&&b.overlay!==false&&b.callPopup!==false;
   const r=(act,icon,title,on,hint)=>srow(act,icon,title,{right:state(on), sub:on?"":hint, warn:!on});
   return `<div class="sg-h">Ring when closed${S.bg?(allOk?" · ready":" · needs setup"):""}</div><div class="sg">
     ${r("bgOn","phone","Background calls",!!b.signedIn,"Tap and enter your password")}
     ${r("bgNotif","bell","Notifications",!!b.notifications,"Tap to allow")}
     ${r("bgMic","mic","Microphone",b.microphone!==false,"Tap › Permissions › Allow")}
     ${r("bgFull","full","Full-screen calls",b.fullScreenAllowed!==false,"Tap and switch on")}
+    ${r("bgPop","bell","Call pop-up",b.callPopup!==false,"Tap › turn on Pop on screen")}
+    ${r("bgOver","full","Show over other apps",b.overlay!==false,"Tap and allow, so the call screen opens by itself")}
     ${r("bgBattery","battery","Battery unrestricted",!!b.batteryUnrestricted,"Tap and choose Allow")}
     ${srow("bgAuto","rocket","Auto-launch",{val:b.manufacturer?esc(b.manufacturer):""})}
   </div>`;
@@ -547,6 +549,8 @@ $("#list").onclick=e=>{
     if(a==="bgBattery") return nat("Background","requestBattery");
     if(a==="bgMic") return nat("Background","openAppInfo");
     if(a==="bgFull") return nat("Background","openFullScreenSettings");
+    if(a==="bgPop") return nat("Background","openCallChannel");
+    if(a==="bgOver") return nat("Background","openOverlaySettings");
     if(a==="bgAuto") return nat("Background","openAutostart");
     if(a==="logout") return api.logout();
     if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
