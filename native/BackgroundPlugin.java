@@ -213,7 +213,7 @@ public class BackgroundPlugin extends Plugin {
     }
 
     // ---- ringing sounds while Xapp is open ----
-    private static Ringtone rt; private static ToneGenerator tg; private static Vibrator vib;
+    private static Ringtone rt; private static ToneGenerator tg; private static Vibrator vib; private static boolean bgShown = false;
 
     /** kind: "incoming" = the phone's own ringtone + vibration (respects silent/vibrate mode); "ringback" = the ringing tone the caller hears. */
     @PluginMethod
@@ -228,7 +228,12 @@ public class BackgroundPlugin extends Plugin {
                 tg = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80);
                 ok = tg.startTone(ToneGenerator.TONE_SUP_RINGTONE);   // 1 s ring, 4 s pause, repeating
             } else {
-                if (!MainActivity.inForeground) {       // Xapp is in the background: the ringing notification does the ringing
+                if (!MainActivity.inForeground) {       // Xapp is in the background: show the ringing notification (same as the test)
+                    String id = call.getString("id", "");
+                    if (id != null && !id.isEmpty()) {
+                        CallNotifications.showIncoming(ctx, id, call.getString("name", "Xapp"), Boolean.TRUE.equals(call.getBoolean("video", false)));
+                        bgShown = true;
+                    }
                     r.put("ok", true); call.resolve(r); return;
                 }
                 CallNotifications.cancelIncoming(ctx);   // the call screen is showing: one ringtone, not two
@@ -260,7 +265,11 @@ public class BackgroundPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void stopRing(PluginCall call) { stopAll(); call.resolve(); }
+    public void stopRing(PluginCall call) {
+        stopAll();
+        if (bgShown) { bgShown = false; CallNotifications.cancelIncoming(getContext()); }
+        call.resolve();
+    }
 
     private static void stopAll() {
         try { if (rt != null) rt.stop(); } catch (Exception ignored) {} rt = null;

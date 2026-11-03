@@ -903,12 +903,12 @@ function tone(pattern){ // pattern: [[freq, ms],...] repeating
 }
 function stopTone(){ window._toneStop&&window._toneStop(); window._toneStop=null; if(window._natRing){ window._natRing=false; nat("Background","stopRing"); } }
 /* ringing sounds: the phone's own ringtone / ringback tone in the APK (always audible, follows the phone's volume and silent mode); web tone as fallback */
-function ringSound(kind){
+function ringSound(kind, info){
   stopTone();
   const web=()=>{ if(kind==="ringback") tone([[440,1200],[0,2600]]); else tone([[523,180],[659,180],[784,260],[0,900]]); };
   if(!isNative()) return web();
   window._natRing=true;
-  nat("Background","ring",{kind},true).then(r=>{ if(!r||!r.ok){ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); } }).catch(()=>{ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); });
+  nat("Background","ring",{kind, ...(info||{})},true).then(r=>{ if(!r||!r.ok){ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); } }).catch(()=>{ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); });
 }
 function beep(){ if(!PREFS.sounds) return; try{ const ac=AC(), o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=880; g.gain.value=.08; o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.12); }catch(e){} }
 
@@ -1236,12 +1236,13 @@ function incoming(c){
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
   api.markRinging && api.markRinging(c.id);   // tells the caller "Ringing…"
   // in the APK the native side decides: rings only while Xapp is on screen, the notification rings otherwise
-  if(isNative() || !document.hidden) ringSound("incoming");
+  const ci=()=>{ const u=S.users[c.caller]; return {id:c.id, name:u?u.name:"Xapp", video:!!c.video}; };
+  if(isNative() || !document.hidden) ringSound("incoming", ci());
   applyCallAction();
   if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ const u=S.users[c.caller]; new Notification(`${u?u.name:"Xapp"} is calling`,{body:c.video?"Video call":"Voice call",tag:"call"}); }catch(e){} }
 }
 /* Xapp brought to the front while a call is ringing (pop-up / notification tapped): keep ringing on screen */
-function reRing(){ if(document.hidden) return; const c=call; if(c && c.inc && !c.startedAt && !c.answering && !c.closed){ clearTimeout(window._reRingT); window._reRingT=setTimeout(()=>{ if(call===c && !c.startedAt && !c.answering && !c.closed) ringSound("incoming"); },350); } }
+function reRing(){ if(document.hidden) return; const c=call; if(c && c.inc && !c.startedAt && !c.answering && !c.closed){ clearTimeout(window._reRingT); window._reRingT=setTimeout(()=>{ if(call===c && !c.startedAt && !c.answering && !c.closed){ const u=S.users[c.inc.caller]; ringSound("incoming",{id:c.inc.id,name:u?u.name:"Xapp",video:!!c.inc.video}); } },350); } }
 document.addEventListener("visibilitychange", reRing); window.addEventListener("focus", reRing);
 function gone(id){ if(call && call.inc && call.inc.id===id && !call.startedAt && !call.answering){ call.log("caller cancelled"); call.close("missed"); } }
 async function answer(){
