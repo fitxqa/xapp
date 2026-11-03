@@ -1217,11 +1217,14 @@ function incoming(c){
   api.wantUsers([c.caller]);
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
   api.markRinging && api.markRinging(c.id);   // tells the caller "Ringing…"
-  const nativeRings = document.hidden && S.bg && S.bg.signedIn;
-  if(!nativeRings) ringSound("incoming");
+  // in the APK the native side decides: rings only while Xapp is on screen, the notification rings otherwise
+  if(isNative() || !document.hidden) ringSound("incoming");
   applyCallAction();
   if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ const u=S.users[c.caller]; new Notification(`${u?u.name:"Xapp"} is calling`,{body:c.video?"Video call":"Voice call",tag:"call"}); }catch(e){} }
 }
+/* Xapp brought to the front while a call is ringing (pop-up / notification tapped): keep ringing on screen */
+function reRing(){ if(document.hidden) return; const c=call; if(c && c.inc && !c.startedAt && !c.answering && !c.closed){ clearTimeout(window._reRingT); window._reRingT=setTimeout(()=>{ if(call===c && !c.startedAt && !c.answering && !c.closed) ringSound("incoming"); },350); } }
+document.addEventListener("visibilitychange", reRing); window.addEventListener("focus", reRing);
 function gone(id){ if(call && call.inc && call.inc.id===id && !call.startedAt && !call.answering){ call.log("caller cancelled"); call.close("missed"); } }
 async function answer(){
   const sess=call; if(!sess||sess.answering) return; sess.answering=true; sess.log("answer tapped"); stopTone(); drawCall("connecting");

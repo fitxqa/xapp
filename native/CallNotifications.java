@@ -71,7 +71,16 @@ public final class CallNotifications {
         }
         n.flags |= Notification.FLAG_INSISTENT;   // keep ringing until answered, declined or cancelled
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(ID_INCOMING, n);
+        if (nm == null) return;
+        try { nm.notify(ID_INCOMING, n); }
+        catch (Exception e) {
+            // some phones refuse the call style: fall back to the classic ringing notification
+            b.setStyle(null).clearActions()
+                .addAction(0, "Decline", open(ctx, callId, "decline", 2))
+                .addAction(0, "Answer", open(ctx, callId, "answer", 3));
+            Notification n2 = b.build(); n2.flags |= Notification.FLAG_INSISTENT;
+            try { nm.notify(ID_INCOMING, n2); } catch (Exception ignored) {}
+        }
     }
 
     static void cancelIncoming(Context ctx) {

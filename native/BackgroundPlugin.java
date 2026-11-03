@@ -228,6 +228,9 @@ public class BackgroundPlugin extends Plugin {
                 tg = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80);
                 ok = tg.startTone(ToneGenerator.TONE_SUP_RINGTONE);   // 1 s ring, 4 s pause, repeating
             } else {
+                if (!MainActivity.inForeground) {       // Xapp is in the background: the ringing notification does the ringing
+                    r.put("ok", true); call.resolve(r); return;
+                }
                 CallNotifications.cancelIncoming(ctx);   // the call screen is showing: one ringtone, not two
                 int mode = am != null ? am.getRingerMode() : AudioManager.RINGER_MODE_NORMAL;
                 if (mode == AudioManager.RINGER_MODE_NORMAL) {
