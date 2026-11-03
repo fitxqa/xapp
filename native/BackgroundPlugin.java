@@ -4,6 +4,13 @@ import android.Manifest;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
+import android.media.ToneGenerator;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -193,6 +200,70 @@ public class BackgroundPlugin extends Plugin {
     @PluginMethod
     public void setMessageNotifications(PluginCall call) {
         NativeWatcher.prefs(getContext()).edit().putBoolean("msgNotif", Boolean.TRUE.equals(call.getBoolean("on", true))).apply();
+        call.resolve();
+    }
+
+    // ---- ringing sounds while Xapp is open ----
+    private static Ringtone rt; private static ToneGenerator tg; private static Vibrator vib;
+
+    /** kind: "incoming" = the phone's own ringtone + vibration (respects silent/vibrate mode); "ringback" = the ringing tone the caller hears. */
+    @PluginMethod
+    public void ring(PluginCall call) {
+        stopAll();
+        Context ctx = getContext();
+        JSObject r = new JSObject();
+        boolean ok = false;
+        try {
+            AudioManager am = (AudioManager) ctx.getSystemService(Context.AUDIO_SERVICE);
+            if ("ringback".equals(call.getString("kind"))) {
+                tg = new ToneGenerator(AudioManager.STREAM_VOICE_CALL, 80);
+                ok = tg.startTone(ToneGenerator.TONE_SUP_RINGTONE);   // 1 s ring, 4 s pause, repeating
+            } else {
+                int mode = am != null ? am.getRingerMode() : AudioManager.RINGER_MODE_NORMAL;
+                if (mode == AudioManager.RINGER_MODE_NORMAL) {
+                    Uri u = RingtoneManager.getActualDefaultRingtoneUri(ctx, RingtoneManager.TYPE_RINGTONE);
+                    if (u == null) u = Settings.System.DEFAULT_RINGTONE_URI;
+                    rt = RingtoneManager.getRingtone(ctx, u);
+                    if (rt != null) {
+                        rt.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build());
+                        if (Build.VERSION.SDK_INT >= 28) rt.setLooping(true);
+                        rt.play(); ok = true;
+                    }
+                }
+                if (mode != AudioManager.RINGER_MODE_SILENT) {
+                    vib = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+                    if (vib != null && vib.hasVibrator()) {
+                        long[] pat = { 0, 900, 1100 };
+                        if (Build.VERSION.SDK_INT >= 26) vib.vibrate(VibrationEffect.createWaveform(pat, 0));
+                        else vib.vibrate(pat, 0);
+                    }
+                    ok = true;   // silent / vibrate mode: vibrating is the right "ring"
+                } else ok = true; // phone on silent: stay quiet on purpose
+            }
+        } catch (Exception e) { ok = false; }
+        r.put("ok", ok);
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void stopRing(PluginCall call) { stopAll(); call.resolve(); }
+
+    private static void stopAll() {
+        try { if (rt != null) rt.stop(); } catch (Exception ignored) {} rt = null;
+        try { if (tg != null) { tg.stopTone(); tg.release(); } } catch (Exception ignored) {} tg = null;
+        try { if (vib != null) vib.cancel(); } catch (Exception ignored) {} vib = null;
+    }
+
+    /** Calls tab opened: remove the "Missed call" notifications. */
+    @PluginMethod
+    public void clearMissed(PluginCall call) {
+        try {
+            NotificationManager nm = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null && Build.VERSION.SDK_INT >= 26)
+                for (android.service.notification.StatusBarNotification n : nm.getActiveNotifications())
+                    if (CallNotifications.CH_MISSED.equals(n.getNotification().getChannelId())) nm.cancel(n.getTag(), n.getId());
+        } catch (Exception ignored) {}
         call.resolve();
     }
 }

@@ -412,6 +412,10 @@ $("#btnCam").onclick=()=>$("#fStatus").click();
 $("#fab").onclick=()=>{ if(S.tab==="chats") openContacts("chat"); else if(S.tab==="calls") openContacts("call"); else openStatusText(); };
 
 function myCalls(){ return S.calls.filter(c=>!(c.hiddenFor||[]).includes(S.me.uid) && (c.status!=="ringing"||Date.now()-c.createdAt>60000)); }
+/* missed-call badge: cleared once the Calls tab has been opened */
+function callsSeenAt(){ try{ return +localStorage.getItem("xappCallsSeen")||0; }catch(e){ return 0; } }
+function seenCalls(){ const before=callsSeenAt(); try{ localStorage.setItem("xappCallsSeen",String(Date.now())); }catch(e){}
+  if(Date.now()-before>3000) nat("Background","clearMissed"); }
 function renderList(force){
   if(!S.me) return;
   const L=$("#list"), q=S.q;
@@ -421,7 +425,9 @@ function renderList(force){
   document.querySelector(".search").hidden = S.tab==="settings";
   const totalUnread=S.chats.reduce((a,c)=>a+(c["unread_"+S.me.uid]?1:0),0);
   $("#unreadAll").hidden=!totalUnread; $("#unreadAll").textContent=totalUnread;
-  const missed=myCalls().filter(c=>c.callee===S.me.uid && !c.answeredAt && c.status!=="ringing" && c.createdAt>Date.now()-864e5).length;
+  if(S.tab==="calls") seenCalls();
+  const since=Math.max(Date.now()-864e5, callsSeenAt());
+  const missed=S.tab==="calls"?0:myCalls().filter(c=>c.callee===S.me.uid && !c.answeredAt && c.status!=="ringing" && c.createdAt>since).length;
   $("#missedAll").hidden=!missed; $("#missedAll").textContent=missed;
   $("#fab").innerHTML = S.tab==="chats"?ico("chat"):S.tab==="calls"?ico("phone"):ico("text");
   $("#fab").setAttribute("aria-label", S.tab==="chats"?"New chat":S.tab==="calls"?"New call":"Text status");
@@ -873,7 +879,15 @@ function tone(pattern){ // pattern: [[freq, ms],...] repeating
   const loop=async()=>{ while(!stop){ for(const [f,ms] of pattern){ if(stop) break; if(f){ const o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=f; g.gain.value=.12; o.connect(g).connect(ac.destination); o.start(); await new Promise(r=>setTimeout(r,ms)); o.stop(); } else await new Promise(r=>setTimeout(r,ms)); } } };
   loop(); window._toneStop=()=>{ stop=true; };
 }
-function stopTone(){ window._toneStop&&window._toneStop(); window._toneStop=null; }
+function stopTone(){ window._toneStop&&window._toneStop(); window._toneStop=null; if(window._natRing){ window._natRing=false; nat("Background","stopRing"); } }
+/* ringing sounds: the phone's own ringtone / ringback tone in the APK (always audible, follows the phone's volume and silent mode); web tone as fallback */
+function ringSound(kind){
+  stopTone();
+  const web=()=>{ if(kind==="ringback") tone([[440,1200],[0,2600]]); else tone([[523,180],[659,180],[784,260],[0,900]]); };
+  if(!isNative()) return web();
+  window._natRing=true;
+  nat("Background","ring",{kind},true).then(r=>{ if(!r||!r.ok){ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); } }).catch(()=>{ window._natRing=false; if(call&&!call.startedAt&&!call.closed) web(); });
+}
 function beep(){ if(!PREFS.sounds) return; try{ const ac=AC(), o=ac.createOscillator(), g=ac.createGain(); o.frequency.value=880; g.gain.value=.08; o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime+.12); }catch(e){} }
 
 async function getMedia(video){
@@ -1189,7 +1203,7 @@ async function startCall(peer, video){
   if(call) return toast("You are already on a call");
   const sess=newSession(peer,video,true); call=sess; drawCall("outgoing");
   if(!await prepare(sess)){ $("#call").hidden=true; call=null; return; }
-  drawCall("outgoing"); tone([[440,1200],[0,2600]]);
+  drawCall("outgoing"); ringSound("ringback");
   try{ await api.startCall(peer,sess.video,sess); }catch(e){ toast("Call failed. Check your connection."); sess.close("ended"); return; }
   sess.missT=setTimeout(()=>{ if(!sess.startedAt) { sess.setStatus({status:"missed"}); sess.close("missed"); } },40000);
 }
@@ -1200,7 +1214,7 @@ function incoming(c){
   ringing=c; const sess=newSession(c.caller,c.video,false); sess.inc=c; call=sess; sess.log("ringing"); drawCall("incoming");
   api.markRinging && api.markRinging(c.id);   // tells the caller "Ringing…"
   const nativeRings = document.hidden && S.bg && S.bg.signedIn;
-  if(!nativeRings) tone([[523,180],[659,180],[784,260],[0,900]]);
+  if(!nativeRings) ringSound("incoming");
   applyCallAction();
   if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ const u=S.users[c.caller]; new Notification(`${u?u.name:"Xapp"} is calling`,{body:c.video?"Video call":"Voice call",tag:"call"}); }catch(e){} }
 }
