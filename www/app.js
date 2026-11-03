@@ -117,6 +117,7 @@ function makeFire(){
     emailFor(u){ return mail(u); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
+    async getDiag(){ try{ return ((await C("users").doc(me).get({source:"server"})).data()||{}).diagBg||null; }catch(e){ return null; } },
     saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
     /* Loads only the people this user knows (self, contacts, chat/call partners), one document each */
     watchUsers(cb){
@@ -502,7 +503,22 @@ function bgSection(){
     ${r("bgBattery","battery","Battery unrestricted",!!b.batteryUnrestricted,"Tap and choose Allow")}
     ${srow("bgAuto","rocket","Auto-launch",{val:b.manufacturer?esc(b.manufacturer):""})}
     ${srow("bgTest","phone","Test ringing",{sub:"Tap, then press Home. It rings in 8 seconds"})}
+    <div id="bgDiag" style="padding:8px 14px 12px;font-size:12px;line-height:1.5;color:var(--muted,#888)"></div>
   </div>`;
+}
+/* what the background service last did (written by the phone itself), so problems can be read off a screenshot */
+async function fillBgDiag(){
+  const el=$("#bgDiag"); if(!el||!api.getDiag) return;
+  const d=await api.getDiag(); if(!$("#bgDiag")) return;
+  const t=v=>{ if(!v) return "never"; const x=new Date(v); return x.toLocaleDateString([], {day:"numeric",month:"short"})+" "+x.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); };
+  if(!d){ $("#bgDiag").innerHTML="Background check: <b>no report from this phone yet</b>"; return; }
+  $("#bgDiag").innerHTML=[
+    `Background check · ${esc(d.device||"")}`,
+    `Listener started: <b>${t(d.startedAt)}</b>`,
+    `Last call noticed: <b>${t(d.lastCallSeenAt)}</b>${d.lastCallSeenAt?(d.inForeground?" (app open)":" (app closed)"):""}`,
+    `Last ring shown: <b>${t(d.lastRingShownAt)}</b>`,
+    d.callListenerError?`<span style="color:#e5484d">Error ${t(d.errAt)}: ${esc(String(d.callListenerError).slice(0,120))}</span>`:""
+  ].filter(Boolean).join("<br>");
 }
 function renderSettings(L){
   const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
@@ -535,6 +551,7 @@ function renderSettings(L){
       ${srow("logout","logout","Sign out",{danger:true,right:""})}
     </div>
   </div>`;
+  fillBgDiag();
   nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="v"+i.version; } });
 }
 const APP_VERSION="1.0";
