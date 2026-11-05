@@ -1197,10 +1197,10 @@ async function cfIce(){
     return ice;
   }catch(e){ return []; }
 }
-function iceWith(cf){   // order = preference: ExpressTURN first, then Cloudflare, then Metered
+function iceWith(cf){   // order = preference: Cloudflare first, then ExpressTURN, then Metered
   const t=CFG.turn||[], isExp=x=>[].concat(x.urls).some(u=>/expressturn/.test(u));
   const stun=ICE.iceServers.filter(x=>!x.username);
-  return {...ICE, iceServers:[...t.filter(isExp), ...cf, ...t.filter(x=>!isExp(x)), ...stun]}; }
+  return {...ICE, iceServers:[...cf, ...t.filter(isExp), ...t.filter(x=>!isExp(x)), ...stun]}; }
 async function prepare(sess){
   let mediaErr=null;
   try{ sess.local=await getMedia(sess.video); sess.log("media ok "+sess.local.getTracks().map(t=>t.kind).join("+")); }
