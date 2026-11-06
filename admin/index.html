@@ -102,12 +102,13 @@ textarea{min-height:90px;resize:vertical}
       <label>Your user ID</label>
       <div style="display:flex;gap:6px"><input id="myUid" readonly><button class="btn sec" id="copyUid" type="button">Copy</button></div>
       <button class="btn sec" id="siOut" type="button" style="width:100%;margin-top:12px">Sign out</button>
+      <button class="btn sec inapp goback hidden" type="button" style="width:100%;margin-top:12px">Back to Xapp</button>
     </div>
   </div>
 </section>
 
 <section id="app" class="hidden">
-  <header class="top"><svg class="logo"><use href="#lg"/></svg><b>Xapp Admin</b><span class="sp"></span><small id="who"></small><button class="btn sec sm" id="reload">Refresh</button><button class="btn sec sm" id="out">Sign out</button></header>
+  <header class="top"><button class="btn sec sm inapp goback hidden" aria-label="Back to Xapp">‹ Xapp</button><svg class="logo"><use href="#lg"/></svg><b>Xapp Admin</b><span class="sp"></span><small id="who"></small><button class="btn sec sm" id="reload">Refresh</button><button class="btn sec sm" id="out">Sign out</button></header>
   <nav class="tabs" id="tabs">
     <button data-t="dash" aria-selected="true">Dashboard</button>
     <button data-t="users">Users</button>
@@ -132,6 +133,10 @@ const LOGIN_DOMAIN = "xapp.local";
 firebase.initializeApp(FB);
 const auth = firebase.auth(), db = firebase.firestore(), C = n => db.collection(n);
 const $ = s => document.querySelector(s);
+const IN_APP = location.hostname === "localhost";   // opened from Xapp's Settings (already signed in there)
+if(IN_APP){ document.querySelectorAll(".inapp").forEach(e=>e.classList.remove("hidden"));
+  ["#out","#siOut"].forEach(x=>$(x).classList.add("hidden"));
+  document.querySelectorAll(".goback").forEach(b=>b.onclick=()=>{ location.href="index.html"; }); }
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const mail = u => u.includes("@") ? u.trim().toLowerCase() : u.trim().toLowerCase().replace(/[^a-z0-9._-]/g,"") + "@" + LOGIN_DOMAIN;
 const D = { users: [], calls: [], stats: [], reports: [], ann: [], tab: "dash", q: "", f: "all" };

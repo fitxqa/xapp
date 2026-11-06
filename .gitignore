@@ -3,3 +3,4 @@ android/
 www/firebase-*-compat.js
 *.apk
 __pycache__/
+www/admin.html

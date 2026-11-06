@@ -31,7 +31,7 @@ const P = {
   updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   bell:"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0", wifi:"M5 12.6a11 11 0 0 1 14 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01M1.4 9a16 16 0 0 1 21.2 0",
-  user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", info:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01"
+  shield:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", info:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01"
 };
 const ico = (n, extra="") => `<svg class="i" viewBox="0 0 24 24" ${extra}><path d="${P[n]}"/></svg>`;
 const endIco = `<svg class="i" viewBox="0 0 24 24" style="transform:rotate(135deg)"><path d="${P.phone}"/></svg>`;
@@ -118,6 +118,7 @@ function makeFire(){
     emailFor(u){ return mail(u); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
+    async isAdmin(){ try{ return (await C("admins").doc(me).get()).exists; }catch(e){ return false; } },
     report(uid, reason){ return C("reports").add({from:me, about:uid, reason, at:Date.now(), status:"open"}); },
     watchAnnouncements(cb){ return C("announcements").orderBy("at","desc").limit(1).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))), ()=>{}); },
     saveCallQ(id, q){ if(id) C("calls").doc(id).set({["q_"+me]:q},{merge:true}).catch(()=>{}); },
@@ -396,6 +397,7 @@ api.onAuth(user=>{
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
   subs.push(api.watchIncoming(incoming, gone));
   subs.push(api.watchAnnouncements(showAnnouncement));
+  if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
   cfIce();
@@ -583,7 +585,9 @@ function renderSettings(L){
       <div class="about"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
     </div>
     <div class="sg-h">Account</div><div class="sg">
+      ${S.isAdmin?srow("admin","shield","Admin panel",{sub:"Users, calls, reports, announcements"}):""}
       ${srow("contactsTab","users","Contacts",{val:String(myContacts().length)})}
+      ${srow("uid","user","User ID",{sub:esc(S.me.uid)+" · tap to copy",right:""})}
       ${srow("logout","logout","Sign out",{danger:true,right:""})}
     </div>
   </div>`;
@@ -596,6 +600,8 @@ $("#list").onclick=e=>{
   const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
     if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme().then(()=>{ renderList(true); if(S.peer) renderChatHead(); }); return; }
     if(a==="profile") return openProfile();
+    if(a==="admin"){ location.href="admin.html"; return; }
+    if(a==="uid"){ (navigator.clipboard?navigator.clipboard.writeText(S.me.uid):Promise.reject()).then(()=>toast("User ID copied")).catch(()=>toast(S.me.uid)); return; }
     if(a==="net") return netTest();
     if(a==="bgOn") return (S.bg&&S.bg.signedIn)?toast("Background calls are already on"):bgPasswordSheet();
     if(a==="bgNotif") return nat("Background","openNotificationSettings");
