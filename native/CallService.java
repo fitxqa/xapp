@@ -68,11 +68,45 @@ public class CallService extends Service {
         }
         running = true;
         NativeWatcher.start(this);
+        watchNetwork();
+        WatchdogReceiver.schedule(this, 15 * 60 * 1000L);
         return START_STICKY;
+    }
+
+    /** Xapp swiped away from recent apps: some phones then stop the service, so ask Android to bring it back in a few seconds. */
+    @Override public void onTaskRemoved(Intent rootIntent) {
+        if (NativeWatcher.signedIn(this)) WatchdogReceiver.schedule(getApplicationContext(), 3000);
+        super.onTaskRemoved(rootIntent);
+    }
+
+    private android.net.ConnectivityManager.NetworkCallback netCb;
+    private long lastNetRefresh = 0;
+    /** Wi-Fi ↔ mobile data or the network comes back: reconnect the call listener straight away. */
+    private void watchNetwork() {
+        if (netCb != null || Build.VERSION.SDK_INT < 24) return;
+        try {
+            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) return;
+            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+            netCb = new android.net.ConnectivityManager.NetworkCallback() {
+                private boolean first = true;
+                @Override public void onAvailable(android.net.Network n) {
+                    if (first) { first = false; return; }   // the callback reports the current network once on register
+                    long now = System.currentTimeMillis();
+                    if (now - lastNetRefresh < 5000) return;
+                    lastNetRefresh = now;
+                    h.postDelayed(() -> NativeWatcher.refresh(CallService.this), 1500);
+                }
+            };
+            cm.registerDefaultNetworkCallback(netCb);
+        } catch (Exception ignored) { netCb = null; }
     }
 
     @Override public void onDestroy() {
         running = false;
+        try { if (netCb != null) ((android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).unregisterNetworkCallback(netCb); } catch (Exception ignored) {}
+        netCb = null;
+        if (NativeWatcher.signedIn(this)) WatchdogReceiver.schedule(getApplicationContext(), 5000);   // killed, not signed out: come back
         try {
             com.google.firebase.FirebaseApp fa = NativeWatcher.app(this);
             com.google.firebase.auth.FirebaseUser u = fa == null ? null : com.google.firebase.auth.FirebaseAuth.getInstance(fa).getCurrentUser();

@@ -4,7 +4,7 @@ M = "android/app/src/main/AndroidManifest.xml"
 m = open(M).read()
 perms = ["CAMERA", "RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS", "POST_NOTIFICATIONS", "FOREGROUND_SERVICE",
          "FOREGROUND_SERVICE_SPECIAL_USE", "FOREGROUND_SERVICE_MICROPHONE", "RECEIVE_BOOT_COMPLETED", "WAKE_LOCK",
-         "USE_FULL_SCREEN_INTENT", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "VIBRATE", "BLUETOOTH_CONNECT", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+         "USE_FULL_SCREEN_INTENT", "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS", "VIBRATE", "BLUETOOTH_CONNECT", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "SCHEDULE_EXACT_ALARM", "ACCESS_NETWORK_STATE"]
 extra = "".join(f'    <uses-permission android:name="android.permission.{p}" />\n' for p in perms if f"permission.{p}\"" not in m)
 extra += '    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />\n'
 extra += '    <uses-feature android:name="android.hardware.camera" android:required="false" />\n'
@@ -17,6 +17,7 @@ app_parts = '''
                 android:value="Keeps a private calling app connected so incoming calls can ring" />
         </service>
         <receiver android:name=".HangupReceiver" android:exported="false" />
+        <receiver android:name=".WatchdogReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

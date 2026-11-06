@@ -14,6 +14,8 @@ import android.app.NotificationManager;
 import android.os.Build;
 import android.os.PowerManager;
 import androidx.core.app.NotificationManagerCompat;
+import android.os.Handler;
+import android.os.Looper;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -25,6 +27,12 @@ final class NativeWatcher {
     private static final Map<String, String[]> ringing = new HashMap<>();   // callId -> {name, video}
     private static final Map<String, String> names = new HashMap<>();
     private static boolean firstChats = true;
+    private static boolean firstCalls = true;
+    private static Context appCtx;
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static int retry = 0;
+    private static long lastCallSnapAt = 0;
+    private static final long STALE_FIRST_SNAPSHOT_MS = 180000;   // only for calls already waiting when the listener (re)attaches
 
     private NativeWatcher() {}
 
@@ -47,6 +55,7 @@ final class NativeWatcher {
 
     static synchronized void start(Context ctx) {
         final Context app = ctx.getApplicationContext();
+        appCtx = app;
         FirebaseApp fa; FirebaseUser u;
         try { fa = app(app); if (fa == null) return; u = FirebaseAuth.getInstance(fa).getCurrentUser(); } catch (Exception e) { return; }
         if (u == null) { stop(); return; }
@@ -64,42 +73,12 @@ final class NativeWatcher {
         if (Build.VERSION.SDK_INT >= 34) { NotificationManager nm = app.getSystemService(NotificationManager.class); info.put("fullScreenAllowed", nm != null && nm.canUseFullScreenIntent()); }
         diag(fs, uid, info);
 
-        callReg = fs.collection("calls").whereEqualTo("callee", uid).whereEqualTo("status", "ringing")
-            .addSnapshotListener((snap, err) -> {
-                if (err != null) { Map<String, Object> e = new HashMap<>(); e.put("callListenerError", err.getMessage()); e.put("errAt", System.currentTimeMillis()); diag(fs, uid, e); }
-                if (snap == null) return;
-                for (DocumentChange dc : snap.getDocumentChanges()) {
-                    DocumentSnapshot d = dc.getDocument();
-                    final String id = d.getId();
-                    if (dc.getType() == DocumentChange.Type.ADDED) { Map<String, Object> e = new HashMap<>(); e.put("lastCallSeenAt", System.currentTimeMillis()); e.put("inForeground", MainActivity.inForeground); diag(fs, uid, e); }
-                    final boolean video = Boolean.TRUE.equals(d.getBoolean("video"));
-                    if (dc.getType() == DocumentChange.Type.ADDED) {
-                        Long created = d.getLong("createdAt");
-                        if (created != null && System.currentTimeMillis() - created > 45000) continue;   // old call
-                        final String caller = str(d.get("caller"), "");
-                        withName(fs, caller, name -> {
-                            ringing.put(id, new String[] { name, video ? "1" : "0" });
-                            try { d.getReference().update("ringingAt", System.currentTimeMillis()); } catch (Exception ignored) {}   // caller sees "Ringing…"
-                            if (!MainActivity.inForeground) {
-                                CallNotifications.showIncoming(app, id, name, video);
-                                Map<String, Object> e = new HashMap<>(); e.put("lastRingShownAt", System.currentTimeMillis()); diag(fs, uid, e);
-                            }
-                        });
-                    } else if (dc.getType() == DocumentChange.Type.REMOVED) {
-                        final String[] r = ringing.remove(id);
-                        CallNotifications.cancelIncoming(app);
-                        if (r != null) d.getReference().get().addOnSuccessListener(full -> {
-                            String st = full != null ? str(full.get("status"), "") : "";
-                            if (("missed".equals(st) || "ringing".equals(st)) && !MainActivity.inForeground)
-                                CallNotifications.showMissed(app, id, r[0], "1".equals(r[1]));
-                        });
-                    }
-                }
-            });
+        listenCalls(app, fs, uid);
 
         firstChats = true; chatLast.clear();
         chatReg = fs.collection("chats").whereArrayContains("members", uid)
             .addSnapshotListener((snap, err) -> {
+                if (err != null) { Map<String, Object> e = new HashMap<>(); e.put("chatListenerError", err.getMessage()); e.put("errAt", System.currentTimeMillis()); diag(fs, uid, e); scheduleRestart(); return; }
                 if (snap == null) return;
                 for (DocumentSnapshot c : snap.getDocuments()) {
                     Long at = c.getLong("lastAt"); Long prev = chatLast.get(c.getId());
@@ -113,6 +92,100 @@ final class NativeWatcher {
                 }
                 firstChats = false;
             });
+    }
+
+
+    /** Listens for calls to this user. A Firestore listener dies for good after an error, so errors re-subscribe. */
+    private static synchronized void listenCalls(final Context app, final FirebaseFirestore fs, final String uid) {
+        if (callReg != null) callReg.remove();
+        firstCalls = true;
+        callReg = fs.collection("calls").whereEqualTo("callee", uid).whereEqualTo("status", "ringing")
+            .addSnapshotListener((snap, err) -> {
+                if (err != null) {
+                    Map<String, Object> e = new HashMap<>(); e.put("callListenerError", err.getMessage()); e.put("errAt", System.currentTimeMillis()); diag(fs, uid, e);
+                    scheduleRestart(); return;
+                }
+                if (snap == null) return;
+                retry = 0; lastCallSnapAt = System.currentTimeMillis();
+                final boolean initial = firstCalls; firstCalls = false;
+                for (DocumentChange dc : snap.getDocumentChanges()) {
+                    final DocumentSnapshot d = dc.getDocument();
+                    final String id = d.getId();
+                    final boolean video = Boolean.TRUE.equals(d.getBoolean("video"));
+                    if (dc.getType() == DocumentChange.Type.ADDED) {
+                        if (ringing.containsKey(id)) continue;   // already ringing (listener re-attached)
+                        // A call that appears while we are listening is new, whatever the two phones' clocks say.
+                        // Only calls already waiting when the listener attaches are checked for age (old leftovers).
+                        Long created = d.getLong("createdAt");
+                        if (initial && created != null && Math.abs(System.currentTimeMillis() - created) > STALE_FIRST_SNAPSHOT_MS) continue;
+                        Map<String, Object> e = new HashMap<>(); e.put("lastCallSeenAt", System.currentTimeMillis()); e.put("inForeground", MainActivity.inForeground); diag(fs, uid, e);
+                        holdAwake(app, 20000);
+                        final String caller = str(d.get("caller"), "");
+                        final String cached = cachedName(app, caller);
+                        ringing.put(id, new String[] { cached != null ? cached : "Xapp", video ? "1" : "0" });
+                        try { d.getReference().update("ringingAt", System.currentTimeMillis()); } catch (Exception ignored) {}   // caller sees "Ringing…"
+                        if (!MainActivity.inForeground) {
+                            // ring at once; the name is filled in when it arrives
+                            CallNotifications.showIncoming(app, id, cached != null ? cached : "Incoming call", video);
+                            Map<String, Object> e2 = new HashMap<>(); e2.put("lastRingShownAt", System.currentTimeMillis()); diag(fs, uid, e2);
+                        }
+                        if (cached == null) withName(fs, caller, name -> {
+                            remember(app, caller, name);
+                            String[] r = ringing.get(id);
+                            if (r == null) return;   // already answered / ended
+                            r[0] = name;
+                            if (!MainActivity.inForeground) CallNotifications.showIncoming(app, id, name, video);
+                        });
+                    } else if (dc.getType() == DocumentChange.Type.REMOVED) {
+                        final String[] r = ringing.remove(id);
+                        CallNotifications.cancelIncoming(app);
+                        if (r != null) d.getReference().get().addOnSuccessListener(full -> {
+                            String st = full != null ? str(full.get("status"), "") : "";
+                            if (("missed".equals(st) || "ringing".equals(st)) && !MainActivity.inForeground)
+                                CallNotifications.showMissed(app, id, r[0], "1".equals(r[1]));
+                        });
+                    }
+                }
+            });
+    }
+
+    /** Watchdog / network back: re-attach the call listener so a silently dropped connection can't miss calls. */
+    static synchronized void refresh(Context ctx) {
+        Context app = ctx.getApplicationContext();
+        try {
+            FirebaseApp fa = app(app); if (fa == null) return;
+            FirebaseUser u = FirebaseAuth.getInstance(fa).getCurrentUser();
+            if (u == null) return;
+            if (callReg == null || chatReg == null || !u.getUid().equals(watchingUid)) { start(app); return; }
+            if (!ringing.isEmpty()) return;   // never interrupt a ringing call
+            listenCalls(app, FirebaseFirestore.getInstance(fa), u.getUid());
+        } catch (Exception ignored) {}
+    }
+
+    /** After a listener error: start again in 3 s, 6 s, 12 s … up to 2 minutes. */
+    private static void scheduleRestart() {
+        final Context app = appCtx; if (app == null) return;
+        long delay = Math.min(120000L, 3000L << Math.min(retry, 6)); retry++;
+        main.postDelayed(() -> { synchronized (NativeWatcher.class) { stop(); } start(app); }, delay);
+    }
+
+    private static PowerManager.WakeLock wl;
+    /** Keep the CPU awake briefly so the ringing notification is shown even if the phone is dozing. */
+    static synchronized void holdAwake(Context app, long ms) {
+        try {
+            if (wl == null) { PowerManager pm = (PowerManager) app.getSystemService(Context.POWER_SERVICE); wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "xapp:incoming"); wl.setReferenceCounted(false); }
+            wl.acquire(ms);
+        } catch (Exception ignored) {}
+    }
+
+    private static String cachedName(Context app, String uid) {
+        String n = names.get(uid);
+        if (n == null) { n = prefs(app).getString("name_" + uid, null); if (n != null) names.put(uid, n); }
+        return n;
+    }
+    private static void remember(Context app, String uid, String name) {
+        if (uid == null || uid.isEmpty() || name == null || "Xapp".equals(name)) return;
+        names.put(uid, name); prefs(app).edit().putString("name_" + uid, name).apply();
     }
 
     interface NameCb { void got(String name); }
@@ -134,6 +207,7 @@ final class NativeWatcher {
     }
 
     static synchronized void stop() {
+        main.removeCallbacksAndMessages(null);
         if (callReg != null) callReg.remove();
         if (chatReg != null) chatReg.remove();
         callReg = null; chatReg = null; watchingUid = null; ringing.clear();

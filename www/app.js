@@ -179,11 +179,14 @@ function makeFire(){
       return ()=>{u1();u2();};
     },
     watchIncoming(onRing, onGone){
-      return C("calls").where("callee","==",me).where("status","==","ringing").onSnapshot(s=>s.docChanges().forEach(c=>{
+      // A call that appears while listening is new whatever the two phones' clocks say; only calls already
+      // waiting when the listener attaches are age-checked (generously, so a phone clock a bit off still rings).
+      let first = true;
+      return C("calls").where("callee","==",me).where("status","==","ringing").onSnapshot(s=>{ const initial=first; first=false; s.docChanges().forEach(c=>{
         const d = {id:c.doc.id,...c.doc.data()};
-        if(c.type==="added" && Date.now()-d.createdAt < 45000) onRing(d);
+        if(c.type==="added" && (!initial || Math.abs(Date.now()-(d.createdAt||0)) < 180000)) onRing(d);
         if(c.type==="removed") onGone(d.id);
-      }));
+      }); }, err=>{ console.warn("incoming listener", err); setTimeout(()=>{ if(api._reIncoming) api._reIncoming(); }, 3000); });
     },
     async startCall(peer, video, sess){
       const ref = C("calls").doc(); sess.id = ref.id;
@@ -395,11 +398,11 @@ api.onAuth(user=>{
   subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.map(peerOf)); renderList(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
-  subs.push(api.watchIncoming(incoming, gone));
+  { let un=api.watchIncoming(incoming, gone); api._reIncoming=()=>{ try{un();}catch(e){} un=api.watchIncoming(incoming, gone); }; subs.push(()=>un()); }
   subs.push(api.watchAnnouncements(showAnnouncement));
   if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
-  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
+  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); }
   cfIce();
   api.ping(); clearInterval(S.pingT); S.pingT=setInterval(()=>{ if(!document.hidden) api.ping(); },60000);
 });
@@ -980,11 +983,27 @@ S.bg=null;
 async function bgRefresh(){ if(!isNative()) return; try{ S.bg=await nat("Background","status"); }catch(e){}
   if(S.bg){ let v=""; try{ const i=await nat("App","getInfo"); v=i&&i.version; }catch(e){} api.saveDiag("diagApp",{at:Date.now(), app:v, ...S.bg}); }
   if(S.tab==="settings") renderList(true); else renderList(); }
-async function bgSignIn(u,p){
+async function bgSignIn(u,p,tries=5){
   if(!isNative()||api.demo) return;
-  try{ await nat("Background","signIn",{email:api.emailFor(u), password:p, options:FIREBASE_CONFIG},true); toast("Background calls are on"); }
-  catch(e){ toast("Background calls could not start: "+((e&&e.message)||"check the password")); }
-  bgRefresh();
+  for(let i=0;i<tries;i++){
+    try{ await nat("Background","signIn",{email:api.emailFor(u), password:p, options:FIREBASE_CONFIG},true); toast("Background calls are on"); bgRefresh(); return true; }
+    catch(e){
+      const m=(e&&e.message)||"";
+      // wrong password: no point retrying; network hiccup right after sign-in: try again shortly
+      if(/password|credential|INVALID_LOGIN|user-not-found|no user record/i.test(m) || i===tries-1){ toast("Background calls could not start: "+(m||"check the password")); break; }
+      await new Promise(r=>setTimeout(r,[2000,5000,10000,20000][i]||20000));
+    }
+  }
+  bgRefresh(); return false;
+}
+/* On every app open: if background calls are off on this phone, ask once for the password so they turn on again. */
+let bgAsked=false;
+async function bgEnsure(){
+  if(!isNative()||api.demo||bgAsked) return;
+  try{ const st=await nat("Background","status"); S.bg=st;
+    if(st && !st.signedIn && S.me && S.me.username){ bgAsked=true; toast("Background calls are off on this phone"); bgPasswordSheet(); }
+    else if(st && st.signedIn && !st.running) nat("Background","start");
+  }catch(e){}
 }
 function bgPasswordSheet(){
   const sh=$("#sheet");
@@ -1012,7 +1031,7 @@ if(isNative()){
   natOn("Background","theme",()=>{ if(PREFS.theme==="system") applyTheme(); });
   natOn("Background","callAction",takeCallAction);
   natOn("Background","hangup",()=>{ if(call) call.hangup(); });
-  natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); if(PREFS.theme==="system") applyTheme(); });
+  natOn("App","resume",()=>{ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); if(api._reIncoming) api._reIncoming(); if(PREFS.theme==="system") applyTheme(); });
 }
 const AUDIO_NAMES={earpiece:"Phone",speaker:"Speaker",bluetooth:"Bluetooth",wired:"Headset"};
 const AUDIO_ICONS={earpiece:"earpiece",speaker:"speaker",bluetooth:"bluetooth",wired:"headphones"};

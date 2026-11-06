@@ -57,7 +57,7 @@ public class BackgroundPlugin extends Plugin {
     @PluginMethod
     public void signOut(PluginCall call) {
         try { FirebaseApp a = NativeWatcher.app(getContext()); if (a != null) FirebaseAuth.getInstance(a).signOut(); } catch (Exception ignored) {}
-        NativeWatcher.stop(); CallService.stop(getContext()); call.resolve();
+        WatchdogReceiver.cancel(getContext()); NativeWatcher.stop(); CallService.stop(getContext()); call.resolve();
     }
 
     @PluginMethod
