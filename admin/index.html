@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Xapp Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='116' fill='%23ff6a13'/%3E%3Cpath d='M256 92A152 152 0 1 1 155 357L104 412 124 318A152 152 0 0 1 256 92Z' fill='%230b0b0c'/%3E%3Cpath d='M202 190 310 298M310 190 202 298' stroke='%23ff6a13' stroke-width='44' stroke-linecap='round'/%3E%3C/svg%3E">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+:root{
+  --bg:#0f0f10; --panel:#161618; --raise:#202024; --line:#2a2a2e; --fg:#f3f1ee; --mute:#9b968f;
+  --orange:#ff6a13; --on-orange:#140700; --ok:#2fbf71; --bad:#ef4444; --warn:#f5a524;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){ :root{ --bg:#f5f3f0; --panel:#fff; --raise:#f0ece7; --line:#e4dfd8; --fg:#1a1816; --mute:#6f6962; color-scheme:light; } }
+*{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--fg);font:14.5px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+.hidden{display:none!important}
+.logo{width:34px;height:34px;flex:none}
+/* sign in */
+#signin{min-height:100vh;display:grid;place-items:center;padding:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+#signin .card{width:100%;max-width:380px}
+#signin h1{font-size:20px;margin:12px 0 4px} #signin p{color:var(--mute);margin:0 0 16px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 5px}
+input,textarea,select{width:100%;background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none}
+input:focus,textarea:focus{border-color:var(--orange)}
+.btn{background:var(--orange);color:var(--on-orange);font-weight:600;border-radius:10px;padding:10px 16px}
+.btn.sec{background:var(--raise);color:var(--fg);border:1px solid var(--line);font-weight:500}
+.btn.danger{background:transparent;color:var(--bad);border:1px solid color-mix(in srgb,var(--bad) 45%,transparent);font-weight:500}
+.btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
+.err{color:var(--bad);font-size:13px;margin-top:10px;min-height:18px}
+code{background:var(--raise);border:1px solid var(--line);border-radius:6px;padding:2px 6px;font-size:13px;word-break:break-all}
+/* layout */
+header.top{position:sticky;top:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:10px 16px}
+header.top b{font-size:16px} header.top .sp{flex:1} header.top small{color:var(--mute)}
+nav.tabs{display:flex;gap:4px;overflow-x:auto;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:55px;z-index:4;scrollbar-width:none}
+nav.tabs button{padding:7px 12px;border-radius:999px;color:var(--mute);white-space:nowrap;font-weight:500}
+nav.tabs button[aria-selected=true]{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+nav.tabs .n{background:var(--bad);color:#fff;border-radius:999px;font-size:11px;padding:0 6px;margin-left:4px}
+main{max-width:1150px;margin:0 auto;padding:16px}
+h2{font-size:17px;margin:4px 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi small{color:var(--mute);display:block;font-size:12.5px} .kpi b{font-size:24px;display:block;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi i{font-style:normal;color:var(--mute);font-size:12px}
+.chart{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:16px}
+.chart .hd{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px} .chart .hd small{color:var(--mute)}
+.bars{display:flex;align-items:flex-end;gap:4px;height:120px}
+.bars>div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
+.bars .pair{display:flex;align-items:flex-end;gap:2px;flex:1;min-height:0;width:100%;justify-content:center}
+.bars span{flex:1;max-width:22px;align-self:flex-end;background:var(--orange);border-radius:4px 4px 0 0;min-height:2px}
+.bars span.b2{background:color-mix(in srgb,var(--orange) 45%,var(--mute))}
+.bars em{font-style:normal;font-size:10.5px;color:var(--mute);margin-top:4px;white-space:nowrap}
+.legend{display:flex;gap:14px;font-size:12.5px;color:var(--mute);margin-top:8px}.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.tools{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}.tools input{max-width:320px}
+.tools .chip{padding:6px 11px;border-radius:999px;border:1px solid var(--line);color:var(--mute)} .tools .chip[aria-pressed=true]{border-color:var(--orange);color:var(--orange)}
+.list{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.row{display:flex;gap:12px;align-items:center;padding:12px 14px;border-top:1px solid var(--line)} .row:first-child{border-top:0}
+.av{width:38px;height:38px;border-radius:50%;background:var(--raise);display:grid;place-items:center;font-weight:600;flex:none;overflow:hidden;color:var(--orange)} .av img{width:100%;height:100%;object-fit:cover}
+.mid{flex:1;min-width:0}.mid b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mid small{display:block;color:var(--mute);font-size:12.5px;overflow:hidden;text-overflow:ellipsis}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--mute);margin-left:4px;vertical-align:1px}
+.tag.ok{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 40%,transparent)} .tag.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 40%,transparent)} .tag.warn{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mute);margin-right:5px}.dot.on{background:var(--ok)}
+.empty{padding:28px;text-align:center;color:var(--mute)}
+.q{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--mute)}
+.q b,.mid .q b{display:inline;color:var(--fg);font-weight:600}
+.checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 12px;font-size:12.5px;color:var(--mute);margin-top:6px}
+.checks span.y::before{content:"✓ ";color:var(--ok);font-weight:700}.checks span.n::before{content:"✕ ";color:var(--bad);font-weight:700}
+form.ann{display:grid;gap:8px;margin-bottom:16px}
+textarea{min-height:90px;resize:vertical}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:calc(100% - 32px)}
+@media (max-width:640px){ header.top small{display:none} .row{flex-wrap:wrap} .acts{width:100%;justify-content:flex-start;padding-left:50px} .kpi b{font-size:21px} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="lg" viewBox="0 0 512 512"><rect width="512" height="512" rx="116" fill="#ff6a13"/><path d="M256 92A152 152 0 1 1 155 357L104 412 124 318A152 152 0 0 1 256 92Z" fill="#0b0b0c"/><path d="M202 190 310 298M310 190 202 298" stroke="#ff6a13" stroke-width="44" stroke-linecap="round"/></symbol></svg>
+
+<section id="signin">
+  <div class="card">
+    <svg class="logo" style="width:48px;height:48px"><use href="#lg"/></svg>
+    <h1>Xapp Admin</h1>
+    <p id="siHint">Sign in with your Xapp username or email.</p>
+    <form id="siForm">
+      <label for="siUser">Username or email</label><input id="siUser" autocomplete="username" required>
+      <label for="siPass">Password</label><input id="siPass" type="password" autocomplete="current-password" required>
+      <div class="err" id="siErr"></div>
+      <button class="btn" style="width:100%;margin-top:6px">Sign in</button>
+    </form>
+    <div id="notAdmin" class="hidden">
+      <p style="margin-top:10px">This account is not an admin yet. To make it the admin, in the <b>Firebase console → Firestore Database</b>:</p>
+      <ol style="padding-left:18px;color:var(--mute);margin:0 0 12px">
+        <li>Click <b>+ Start collection</b>, name it <code>admins</code>.</li>
+        <li>Document ID: paste your user ID below. Add any field, e.g. <code>name</code> = your name. Save.</li>
+        <li>Publish the new Firestore rules, then reload this page.</li>
+      </ol>
+      <label>Your user ID</label>
+      <div style="display:flex;gap:6px"><input id="myUid" readonly><button class="btn sec" id="copyUid" type="button">Copy</button></div>
+      <button class="btn sec" id="siOut" type="button" style="width:100%;margin-top:12px">Sign out</button>
+    </div>
+  </div>
+</section>
+
+<section id="app" class="hidden">
+  <header class="top"><svg class="logo"><use href="#lg"/></svg><b>Xapp Admin</b><span class="sp"></span><small id="who"></small><button class="btn sec sm" id="reload">Refresh</button><button class="btn sec sm" id="out">Sign out</button></header>
+  <nav class="tabs" id="tabs">
+    <button data-t="dash" aria-selected="true">Dashboard</button>
+    <button data-t="users">Users</button>
+    <button data-t="calls">Calls</button>
+    <button data-t="phones">Phones</button>
+    <button data-t="ann">Announcements</button>
+    <button data-t="reports">Reports<span class="n hidden" id="repN"></span></button>
+  </nav>
+  <main id="view"><div class="empty">Loading…</div></main>
+</section>
+
+<script>
+const FB = {
+  apiKey: "AIzaSyAfvocJ8xYish8hfItCh9MwHue8-cFsHJA",
+  authDomain: "xapp-976e1.firebaseapp.com",
+  projectId: "xapp-976e1",
+  storageBucket: "xapp-976e1.firebasestorage.app",
+  messagingSenderId: "390505325630",
+  appId: "1:390505325630:web:4740d5b7be8e7a62f45d6f"
+};
+const LOGIN_DOMAIN = "xapp.local";
+firebase.initializeApp(FB);
+const auth = firebase.auth(), db = firebase.firestore(), C = n => db.collection(n);
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const mail = u => u.includes("@") ? u.trim().toLowerCase() : u.trim().toLowerCase().replace(/[^a-z0-9._-]/g,"") + "@" + LOGIN_DOMAIN;
+const D = { users: [], calls: [], stats: [], reports: [], ann: [], tab: "dash", q: "", f: "all" };
+const U = id => D.users.find(u => u.uid === id) || { uid:id, name:"Unknown user", username:"" };
+
+function toast(t){ const e=document.createElement("div"); e.className="toast"; e.textContent=t; document.body.appendChild(e); setTimeout(()=>e.remove(),2600); }
+function when(t){ if(!t) return "never"; const d=new Date(t), n=new Date(); const tm=d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  if(d.toDateString()===n.toDateString()) return "today "+tm;
+  const y=new Date(n); y.setDate(n.getDate()-1); if(d.toDateString()===y.toDateString()) return "yesterday "+tm;
+  return d.toLocaleDateString([], {day:"numeric",month:"short", year: d.getFullYear()!==n.getFullYear()?"numeric":undefined})+" "+tm; }
+function dur(s){ if(!s) return "0:00"; s=Math.round(s); const m=Math.floor(s/60); return (m>=60? Math.floor(m/60)+":"+String(m%60).padStart(2,"0") : m)+":"+String(s%60).padStart(2,"0"); }
+function dayKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function av(u){ return `<span class="av">${u.photo&&u.photo.startsWith("data:")?`<img src="${u.photo}" alt="">`:esc((u.name||"?").trim().charAt(0).toUpperCase())}</span>`; }
+const online = u => u.lastSeen && Date.now()-u.lastSeen < 150000;
+function ringReady(u){ const b=u.diagApp||{}; if(!u.diagApp) return null; return !!(b.signedIn && b.notifications && b.batteryUnrestricted && b.microphone!==false && b.fullScreenAllowed!==false); }
+
+/* ---------- sign in ---------- */
+$("#siForm").onsubmit = async e => { e.preventDefault(); $("#siErr").textContent="";
+  try{ await auth.signInWithEmailAndPassword(mail($("#siUser").value), $("#siPass").value); }
+  catch(err){ $("#siErr").textContent = /password|credential|user-not-found/.test(err.code||"") ? "Wrong username or password." : (err.message||"Couldn't sign in."); } };
+$("#siOut").onclick = $("#out").onclick = () => auth.signOut();
+$("#copyUid").onclick = () => { navigator.clipboard.writeText($("#myUid").value).then(()=>toast("Copied")); };
+$("#reload").onclick = () => load().then(()=>toast("Updated"));
+
+auth.onAuthStateChanged(async u => {
+  $("#notAdmin").classList.add("hidden"); $("#siForm").classList.remove("hidden");
+  if(!u){ $("#signin").classList.remove("hidden"); $("#app").classList.add("hidden"); return; }
+  let admin=false; try{ admin=(await C("admins").doc(u.uid).get()).exists; }catch(e){}
+  if(!admin){ $("#signin").classList.remove("hidden"); $("#app").classList.add("hidden"); $("#siForm").classList.add("hidden");
+    $("#notAdmin").classList.remove("hidden"); $("#myUid").value=u.uid; $("#siHint").textContent="Signed in as "+u.email.replace("@"+LOGIN_DOMAIN,""); return; }
+  $("#signin").classList.add("hidden"); $("#app").classList.remove("hidden"); $("#who").textContent=u.email.replace("@"+LOGIN_DOMAIN,"");
+  await load();
+});
+
+async function load(){
+  const safe = p => p.catch(e => { console.warn(e); return null; });
+  const [us, cs, st, rp, an] = await Promise.all([
+    safe(C("users").limit(3000).get()),
+    safe(C("calls").orderBy("createdAt","desc").limit(500).get()),
+    safe(C("stats").orderBy("day","desc").limit(31).get()),
+    safe(C("reports").orderBy("at","desc").limit(300).get()),
+    safe(C("announcements").orderBy("at","desc").limit(30).get())
+  ]);
+  const docs = s => s ? s.docs.map(d => ({ id:d.id, ...d.data() })) : [];
+  D.users = docs(us).map(u => ({ uid:u.id, ...u })).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
+  D.calls = docs(cs); D.stats = docs(st); D.reports = docs(rp); D.ann = docs(an);
+  if(!us) toast("Couldn't load users. Publish the new Firestore rules first.");
+  const open = D.reports.filter(r=>r.status!=="done").length; $("#repN").textContent=open; $("#repN").classList.toggle("hidden", !open);
+  render();
+}
+
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => { D.tab=b.dataset.t; D.q=""; D.f="all";
+  document.querySelectorAll("#tabs button").forEach(x=>x.setAttribute("aria-selected", x===b)); render(); });
+
+function render(){ const v=$("#view"); ({dash, users, calls, phones, ann, reports})[D.tab](v); }
+
+/* ---------- dashboard ---------- */
+function dash(v){
+  const now=Date.now(), today=new Date(); today.setHours(0,0,0,0); const t0=today.getTime(), w0=t0-6*864e5;
+  const real=D.users.filter(u=>!u.deleted);
+  const st=Object.fromEntries(D.stats.map(s=>[s.id,s]));
+  const sum=(k,from)=>D.stats.filter(s=>new Date(s.id+"T00:00").getTime()>=from).reduce((a,s)=>a+(s[k]||0),0);
+  const callsT=D.calls.filter(c=>c.createdAt>=t0), callsW=D.calls.filter(c=>c.createdAt>=w0);
+  const ans=callsW.filter(c=>c.answeredAt), talk=ans.reduce((a,c)=>a+((c.endedAt||c.answeredAt)-c.answeredAt)/1000,0);
+  const qs=D.calls.flatMap(c=>Object.keys(c).filter(k=>k.startsWith("q_")).map(k=>c[k])).filter(q=>q&&q.connected&&q.rtt!=null&&q.at>=w0);
+  const avgRtt=qs.length?Math.round(qs.reduce((a,q)=>a+q.rtt,0)/qs.length):null;
+  const newUsers = real.filter(u=>(u.createdAt||0)>=w0).length;
+  const kpi=(l,v,i)=>`<div class="kpi"><small>${l}</small><b>${v}</b>${i?`<i>${i}</i>`:""}</div>`;
+  // last 14 days
+  const days=[...Array(14)].map((_,i)=>{ const d=new Date(t0-(13-i)*864e5); return d; });
+  const calls14=days.map(d=>{ const a=d.getTime(); return D.calls.filter(c=>c.createdAt>=a&&c.createdAt<a+864e5).length; });
+  const msgs14=days.map(d=>(st[dayKey(d)]||{}).msgs||0), sign14=days.map(d=>(st[dayKey(d)]||{}).signups||0);
+  const bars=(a,b,lab)=>{ const mx=Math.max(1,...a,...(b||[])); return `<div class="bars">${days.map((d,i)=>`<div title="${d.toLocaleDateString()}: ${a[i]}${b?" / "+b[i]:""}"><div class="pair"><span style="height:${a[i]/mx*100}%"></span>${b?`<span class="b2" style="height:${b[i]/mx*100}%"></span>`:""}</div><em>${i%2?"&nbsp;":d.getDate()}</em></div>`).join("")}</div>`; };
+  v.innerHTML = `<h2>Overview</h2><div class="grid">
+    ${kpi("Users", real.length, `${real.filter(online).length} online now`)}
+    ${kpi("Active today", real.filter(u=>(u.lastSeen||0)>=t0).length, `${real.filter(u=>(u.lastSeen||0)>=w0).length} this week`)}
+    ${kpi("New sign-ups", sum("signups",t0), `${sum("signups",w0)} this week`)}
+    ${kpi("Messages today", sum("msgs",t0), `${sum("msgs",w0)} this week`)}
+    ${kpi("Calls today", callsT.length, `${callsW.length} this week`)}
+    ${kpi("Answered", callsW.length?Math.round(ans.length/callsW.length*100)+"%":"–", "of calls this week")}
+    ${kpi("Talk time", dur(talk), "this week")}
+    ${kpi("Avg delay", avgRtt!=null?avgRtt+" ms":"–", avgRtt==null?"no data yet":avgRtt<150?"good":avgRtt<300?"OK":"slow")}
+    ${kpi("Blocked", D.users.filter(u=>u.blocked&&!u.deleted).length, `${D.reports.filter(r=>r.status!=="done").length} open reports`)}
+  </div>
+  <div class="chart"><div class="hd"><b>Messages</b><small>last 14 days</small></div>${bars(msgs14)}</div>
+  <div class="chart"><div class="hd"><b>Calls &amp; sign-ups</b><small>last 14 days</small></div>${bars(calls14, sign14)}
+    <div class="legend"><span><i style="background:var(--orange)"></i>Calls</span><span><i style="background:color-mix(in srgb,var(--orange) 45%,var(--mute))"></i>Sign-ups</span></div></div>
+  <p class="q">Message counts start from the day this admin panel was installed. Message text is never visible here.</p>`;
+}
+
+/* ---------- users ---------- */
+function users(v){
+  const q=D.q.toLowerCase();
+  const f={all:u=>!u.deleted, online:u=>!u.deleted&&online(u), blocked:u=>u.blocked&&!u.deleted, deleted:u=>u.deleted}[D.f];
+  const list=D.users.filter(f).filter(u=>!q||[u.name,u.username,u.email,u.uid].some(x=>(x||"").toLowerCase().includes(q)));
+  v.innerHTML = `<h2>Users <span class="q">(${list.length})</span></h2>
+    <div class="tools"><input id="q" placeholder="Search name, username or email" value="${esc(D.q)}">
+      ${["all","online","blocked","deleted"].map(k=>`<button class="chip" data-f="${k}" aria-pressed="${D.f===k}">${k[0].toUpperCase()+k.slice(1)}</button>`).join("")}</div>
+    <div class="list">${list.map(u=>{ const r=ringReady(u);
+      return `<div class="row">${av(u)}<div class="mid"><b>${esc(u.name||"No name")}${u.blocked&&!u.deleted?'<span class="tag bad">Blocked</span>':""}${u.deleted?'<span class="tag">Deleted</span>':""}</b>
+        <small>@${esc(u.username||"")}${u.email?" · "+esc(u.email):""}</small>
+        <small><span class="dot ${online(u)?"on":""}"></span>${online(u)?"Online":"Last seen "+when(u.lastSeen)} · ${esc((u.diagBg&&u.diagBg.device)||"device unknown")}${r===null?"":r?' <span class="tag ok">Ring ready</span>':' <span class="tag warn">Ring setup</span>'}</small></div>
+        <div class="acts">${u.deleted?"":u.blocked?`<button class="btn sec sm" data-unblock="${esc(u.uid)}">Unblock</button>`:`<button class="btn sec sm" data-block="${esc(u.uid)}">Block</button>`}
+          ${u.deleted?"":`<button class="btn danger sm" data-del="${esc(u.uid)}">Delete</button>`}</div></div>`; }).join("") || `<div class="empty">No users</div>`}</div>`;
+  $("#q").oninput=e=>{ D.q=e.target.value; const p=e.target.selectionStart; users(v); const n=$("#q"); n.focus(); n.setSelectionRange(p,p); };
+  v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; users(v); });
+  bindUserActions(v, ()=>users(v));
+}
+function bindUserActions(v, redraw){
+  v.querySelectorAll("[data-block]").forEach(b=>b.onclick=()=>setBlocked(b.dataset.block,true).then(redraw));
+  v.querySelectorAll("[data-unblock]").forEach(b=>b.onclick=()=>setBlocked(b.dataset.unblock,false).then(redraw));
+  v.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>delUser(b.dataset.del).then(redraw));
+}
+async function setBlocked(uid, on){
+  const u=U(uid); if(on && !confirm(`Block ${u.name}? They will be signed out and can't chat or call until you unblock them.`)) return;
+  try{ await C("users").doc(uid).update({blocked:on, blockedAt:on?Date.now():null}); u.blocked=on; toast(on?"Blocked":"Unblocked"); }
+  catch(e){ toast("Couldn't change it: "+(e.code||e.message)); }
+}
+async function delUser(uid){
+  const u=U(uid); if(!confirm(`Delete ${u.name} (@${u.username||""})?\n\nTheir profile and status updates are removed and they are signed out. This can't be undone.`)) return;
+  try{
+    await C("users").doc(uid).set({uid, name:"Deleted user", username:"", about:"", photo:"", contacts:[], deleted:true, blocked:true, deletedAt:Date.now()});
+    const st=await C("statuses").where("uid","==",uid).get(); await Promise.all(st.docs.map(d=>d.ref.delete()));
+    Object.assign(u,{name:"Deleted user",username:"",deleted:true,blocked:true}); toast("Account deleted");
+  }catch(e){ toast("Couldn't delete: "+(e.code||e.message)); }
+}
+
+/* ---------- calls ---------- */
+function calls(v){
+  const f={all:()=>true, missed:c=>!c.answeredAt, failed:c=>Object.keys(c).some(k=>k.startsWith("q_")&&c[k]&&c[k].connected===false&&c.answeredAt) || (c.answeredAt&&!c.endedAt&&Date.now()-c.createdAt>36e5), poor:c=>qOf(c).some(q=>q.rtt>300||q.loss>5)}[D.f];
+  const list=D.calls.filter(f);
+  v.innerHTML = `<h2>Calls <span class="q">(last ${D.calls.length})</span></h2>
+    <div class="tools">${[["all","All"],["missed","Not answered"],["poor","Poor quality"],["failed","Failed"]].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${D.f===k}">${l}</button>`).join("")}</div>
+    <div class="list">${list.map(c=>{ const a=U(c.caller), b=U(c.callee), qs=qOf(c);
+      const len=c.answeredAt&&c.endedAt?dur((c.endedAt-c.answeredAt)/1000):"";
+      const st=c.answeredAt?`<span class="tag ok">Answered${len?" · "+len:""}</span>`:c.status==="declined"?'<span class="tag warn">Declined</span>':c.status==="ringing"?'<span class="tag">Ringing</span>':'<span class="tag bad">Missed</span>';
+      return `<div class="row"><div class="mid"><b>${esc(a.name)} → ${esc(b.name)} ${c.video?'<span class="tag">Video</span>':'<span class="tag">Voice</span>'} ${st}</b>
+        <small>${when(c.createdAt)}${c.ringingAt?" · rang":c.answeredAt?"":" · didn't reach the phone"}</small>
+        ${qs.map(q=>`<div class="q">${esc(q.who)}: <b>${esc(shortRoute(q.route))}</b>${q.proto?" "+esc(q.proto):""} · delay <b>${q.rtt??"–"} ms</b> (max ${q.maxRtt??"–"}) · loss <b>${q.loss??"–"}%</b> · jitter ${q.jitter??"–"} ms</div>`).join("")}</div></div>`; }).join("") || `<div class="empty">No calls</div>`}</div>`;
+  v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; calls(v); });
+}
+function qOf(c){ return Object.keys(c).filter(k=>k.startsWith("q_")&&c[k]).map(k=>({...c[k], who:U(k.slice(2)).name})); }
+function shortRoute(r){ r=r||""; if(/direct/i.test(r)) return "Direct"; if(/cloudflare/i.test(r)) return "Relay · Cloudflare"; if(/expressturn/i.test(r)) return "Relay · ExpressTURN"; if(/metered/i.test(r)) return "Relay · Metered"; return r?r.replace(/^Relay/,"Relay"):"not connected"; }
+
+/* ---------- phones ---------- */
+function phones(v){
+  const f={all:u=>!u.deleted, issues:u=>!u.deleted&&ringReady(u)===false}[D.f]||(u=>!u.deleted);
+  const list=D.users.filter(f).filter(u=>u.diagApp||u.diagBg);
+  const y=(ok,l)=>ok==null?"":`<span class="${ok?"y":"n"}">${l}</span>`;
+  v.innerHTML = `<h2>Phones</h2><div class="tools">${[["all","All"],["issues","Needs setup"]].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${D.f===k}">${l}</button>`).join("")}</div>
+    <p class="q" style="margin-top:-4px">What each phone reports about ringing when Xapp is closed.</p>
+    <div class="list">${list.map(u=>{ const a=u.diagApp||{}, g=u.diagBg||{};
+      return `<div class="row">${av(u)}<div class="mid"><b>${esc(u.name)} <span class="q">@${esc(u.username||"")}</span></b>
+        <small>${esc(g.device||a.manufacturer||"")}${a.app?" · Xapp "+esc(a.app):""} · reported ${when(a.at)}</small>
+        <div class="checks">${y(a.signedIn,"Background calls")}${y(a.notifications,"Notifications")}${y(a.batteryUnrestricted,"Battery unrestricted")}${y(a.microphone,"Microphone")}${y(a.fullScreenAllowed,"Full-screen calls")}${y(a.callPopup,"Call pop-up")}</div>
+        <div class="q" style="margin-top:6px">Listener started: <b>${when(g.startedAt)}</b> · last call noticed: <b>${when(g.lastCallSeenAt)}</b>${g.lastCallSeenAt?(g.inForeground?" (app open)":" (app closed)"):""} · last ring: <b>${when(g.lastRingShownAt)}</b></div>
+        ${g.callListenerError?`<div class="q" style="color:var(--bad)">Error ${when(g.errAt)}: ${esc(String(g.callListenerError).slice(0,160))}</div>`:""}</div></div>`; }).join("") || `<div class="empty">No phone reports yet</div>`}</div>`;
+  v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; phones(v); });
+}
+
+/* ---------- announcements ---------- */
+function ann(v){
+  v.innerHTML = `<h2>Announcements</h2>
+    <form class="ann card" id="annF"><b>Send a message to everyone</b><small class="q">It pops up once in Xapp for every user (shown for 14 days).</small>
+      <input id="annT" placeholder="Title (optional), e.g. New version" maxlength="60">
+      <textarea id="annX" placeholder="Message, e.g. Xapp 1.0.66 is ready. Download it from …" maxlength="600" required></textarea>
+      <div><button class="btn">Send to all users</button></div></form>
+    <div class="list">${D.ann.map(a=>`<div class="row"><div class="mid"><b>${esc(a.title||"Xapp")}</b><small style="white-space:pre-wrap">${esc(a.text)}</small><small>${when(a.at)}</small></div>
+      <div class="acts"><button class="btn danger sm" data-rm="${esc(a.id)}">Delete</button></div></div>`).join("") || `<div class="empty">Nothing sent yet</div>`}</div>`;
+  $("#annF").onsubmit=async e=>{ e.preventDefault(); const text=$("#annX").value.trim(); if(!text) return;
+    if(!confirm("Send this message to all Xapp users?")) return;
+    try{ const a={title:$("#annT").value.trim(), text, at:Date.now(), by:auth.currentUser.uid}; const r=await C("announcements").add(a); D.ann.unshift({id:r.id,...a}); toast("Sent"); ann(v); }
+    catch(err){ toast("Couldn't send: "+(err.code||err.message)); } };
+  v.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{ if(!confirm("Delete this announcement? Users who haven't seen it yet won't get it.")) return;
+    try{ await C("announcements").doc(b.dataset.rm).delete(); D.ann=D.ann.filter(a=>a.id!==b.dataset.rm); ann(v); }catch(err){ toast("Couldn't delete"); } });
+}
+
+/* ---------- reports ---------- */
+function reports(v){
+  const list=D.reports.filter(r=>D.f==="done"?r.status==="done":r.status!=="done");
+  v.innerHTML = `<h2>Reports</h2><div class="tools">${[["all","Open"],["done","Resolved"]].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${D.f===k}">${l}</button>`).join("")}</div>
+    <div class="list">${list.map(r=>{ const a=U(r.about), f=U(r.from); const n=D.reports.filter(x=>x.about===r.about).length;
+      return `<div class="row">${av(a)}<div class="mid"><b>${esc(a.name)} <span class="q">@${esc(a.username||"")}</span>${a.blocked?'<span class="tag bad">Blocked</span>':""}${n>1?`<span class="tag warn">${n} reports</span>`:""}</b>
+        <small><b style="display:inline;color:var(--fg)">${esc(r.reason)}</b> · reported by ${esc(f.name)} · ${when(r.at)}</small></div>
+        <div class="acts">${a.blocked||a.deleted?"":`<button class="btn sec sm" data-block="${esc(a.uid)}">Block user</button>`}
+          ${r.status!=="done"?`<button class="btn sec sm" data-done="${esc(r.id)}">Mark resolved</button>`:""}
+          <button class="btn danger sm" data-rrm="${esc(r.id)}">Delete</button></div></div>`; }).join("") || `<div class="empty">${D.f==="done"?"No resolved reports":"No open reports"}</div>`}</div>`;
+  v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; reports(v); });
+  bindUserActions(v, ()=>reports(v));
+  v.querySelectorAll("[data-done]").forEach(b=>b.onclick=async()=>{ try{ await C("reports").doc(b.dataset.done).update({status:"done", doneAt:Date.now()}); D.reports.find(r=>r.id===b.dataset.done).status="done"; reports(v); refreshRepN(); }catch(e){ toast("Couldn't update"); } });
+  v.querySelectorAll("[data-rrm]").forEach(b=>b.onclick=async()=>{ try{ await C("reports").doc(b.dataset.rrm).delete(); D.reports=D.reports.filter(r=>r.id!==b.dataset.rrm); reports(v); refreshRepN(); }catch(e){ toast("Couldn't delete"); } });
+}
+function refreshRepN(){ const n=D.reports.filter(r=>r.status!=="done").length; $("#repN").textContent=n; $("#repN").classList.toggle("hidden",!n); }
+</script>
+</body>
+</html>

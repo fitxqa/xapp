@@ -101,9 +101,10 @@ function makeFire(){
     async signup(u,p,name){
       const c = await auth.createUserWithEmailAndPassword(mail(u),p);
       const em = isEmail(u) ? u.trim().toLowerCase() : null;
-      const doc = {uid:c.user.uid, username: em ? em.split("@")[0] : u.trim().toLowerCase(), name: name || (em ? em.split("@")[0] : u), about:"Hey there! I am using Xapp", lastSeen:Date.now(), contacts:[]};
+      const doc = {uid:c.user.uid, username: em ? em.split("@")[0] : u.trim().toLowerCase(), name: name || (em ? em.split("@")[0] : u), about:"Hey there! I am using Xapp", lastSeen:Date.now(), createdAt:Date.now(), contacts:[]};
       if(em) doc.email = em;
       await C("users").doc(c.user.uid).set(doc);
+      this.bumpStat("signups");
     },
     resetPassword(email){ return auth.sendPasswordResetEmail(email.trim().toLowerCase()); },
     async findUser(q){
@@ -117,6 +118,11 @@ function makeFire(){
     emailFor(u){ return mail(u); },
     ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
+    report(uid, reason){ return C("reports").add({from:me, about:uid, reason, at:Date.now(), status:"open"}); },
+    watchAnnouncements(cb){ return C("announcements").orderBy("at","desc").limit(1).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))), ()=>{}); },
+    saveCallQ(id, q){ if(id) C("calls").doc(id).set({["q_"+me]:q},{merge:true}).catch(()=>{}); },
+    bumpStat(k){ const d=new Date(), day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      C("stats").doc(day).set({day, [k]:firebase.firestore.FieldValue.increment(1)},{merge:true}).catch(()=>{}); },
     async getDiag(){ try{ return ((await C("users").doc(me).get({source:"server"})).data()||{}).diagBg||null; }catch(e){ return null; } },
     saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
     /* Loads only the people this user knows (self, contacts, chat/call partners), one document each */
@@ -138,6 +144,7 @@ function makeFire(){
       const cid = chatId(me,peer), ref = C("chats").doc(cid);
       await ref.set({members:[me,peer].sort(), last:preview(m), lastAt:Date.now(), lastFrom:me, ["unread_"+peer]:firebase.firestore.FieldValue.increment(1)},{merge:true});
       await ref.collection("messages").add({...m, from:me, at:Date.now(), read:false});
+      this.bumpStat("msgs");
     },
     hideMessage(peer, id){ return C("chats").doc(chatId(me,peer)).collection("messages").doc(id).update({hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)}); },
     async deleteForAll(peer, m, isLast){
@@ -268,6 +275,7 @@ function makeDemo(){
     async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
     ping(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
+    report(){ return Promise.resolve(); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -381,11 +389,13 @@ api.onAuth(user=>{
     $("#lgPass").value=""; return; }
   S.me=user; $("#login").hidden=true; $("#shell").hidden=false; $("#mTest").hidden=!api.demo;
   subs.push(api.watchUsers(us=>{ S.users={}; us.forEach(u=>S.users[u.uid]=u);
+    const mine=S.users[S.me.uid]; if(mine && (mine.blocked||mine.deleted)){ toast(mine.deleted?"This account was removed":"This account has been blocked by Xapp"); api.logout(); return; }
     if(call && S.users[call.peer]){ const h2=$("#call h2"), av=$("#call .info .av"); if(h2 && h2.textContent!==S.users[call.peer].name){ h2.textContent=S.users[call.peer].name; if(av) av.outerHTML=avatar(S.users[call.peer], av.className.replace(/^av\s*/,"")); } } if(S.users[S.me.uid]) S.me={...S.me,...S.users[S.me.uid]}; renderList(); if(S.peer) renderChatHead(); }));
   subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.map(peerOf)); renderList(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
   subs.push(api.watchIncoming(incoming, gone));
+  subs.push(api.watchAnnouncements(showAnnouncement));
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); }
   cfIce();
@@ -393,6 +403,32 @@ api.onAuth(user=>{
 });
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ api.ping(); if(S.peer) api.markRead(S.peer); } });
 
+/* message from Xapp (sent from the admin panel), shown once */
+function showAnnouncement(list){
+  const a=list&&list[0]; if(!a||!a.text) return;
+  let seen=0; try{ seen=+localStorage.getItem("xappAnnSeen")||0; }catch(e){}
+  if(a.at<=seen || Date.now()-a.at>14*864e5) return;
+  const sh=$("#pop"); if(!sh.hidden) return setTimeout(()=>showAnnouncement(list),4000);
+  sh.innerHTML=`<div class="popbg" data-close></div><div class="popcard" role="dialog" aria-label="Message from Xapp"><div class="grip"></div>
+    <div style="padding:6px 20px 4px;font-weight:600;font-size:16px">${esc(a.title||"Xapp")}</div>
+    <div class="msgprev" style="white-space:pre-wrap">${esc(a.text)}</div>
+    <div class="acts" style="padding-top:0"><button data-close style="justify-content:center;color:var(--orange);font-weight:600">OK</button></div></div>`;
+  sh.hidden=false; requestAnimationFrame(()=>sh.classList.add("open"));
+  sh.onclick=e=>{ if(!e.target.closest("[data-close]")) return; try{ localStorage.setItem("xappAnnSeen",String(a.at)); }catch(err){}
+    sh.classList.remove("open"); setTimeout(()=>{ sh.hidden=true; sh.innerHTML=""; },180); };
+}
+/* report a user to the Xapp admin */
+function reportMenu(uid){
+  const u=S.users[uid]||{name:"this user"}, sh=$("#pop");
+  sh.innerHTML=`<div class="popbg" data-close></div><div class="popcard" role="dialog" aria-label="Report"><div class="grip"></div>
+    <div class="msgprev">Report ${esc(u.name)}? Xapp will review this account. Your chat stays private.</div>
+    <div class="acts">${["Spam","Abuse or harassment","Fake account","Something else"].map(r=>`<button data-r="${r}" class="del">${ico("bell")}${r}</button>`).join("")}</div>
+    <div class="acts" style="padding-top:0"><button data-close style="justify-content:center;color:var(--mute)">Cancel</button></div></div>`;
+  sh.hidden=false; requestAnimationFrame(()=>sh.classList.add("open"));
+  const done=()=>{ sh.classList.remove("open"); setTimeout(()=>{ sh.hidden=true; sh.innerHTML=""; },180); };
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return done(); const b=e.target.closest("[data-r]"); if(!b) return; done();
+    try{ await api.report(uid,b.dataset.r); toast("Report sent. Thank you"); }catch(err){ toast("Couldn't send the report. Check your connection."); } };
+}
 function notifyNew(cs){
   cs.forEach(c=>{ const n=c["unread_"+S.me.uid]||0, was=S.lastUnread[c.id]??n; S.lastUnread[c.id]=n;
     if(n>was && (document.hidden || S.peer!==peerOf(c))){
@@ -692,7 +728,8 @@ function renderChatHead(){
   const u=S.users[S.peer]||{uid:S.peer,name:"Contact"};
   const sub = S.typing===S.peer ? `<small class="typing">typing…</small>` : `<small>${isOnline(u)?"online":u.lastSeen?"last seen "+(dayLabel(u.lastSeen)==="Today"?"today at ":dayLabel(u.lastSeen)+" at ")+hm(u.lastSeen):esc(u.about||"")}</small>`;
   $("#chatHead").innerHTML=`<button class="ibtn back" id="cBack" aria-label="Back">${ico("back")}</button><div class="who">${avatar(u,"sm")}<div style="min-width:0"><b>${esc(u.name)}</b>${sub}</div></div>
-    <button class="ibtn" id="cVid" aria-label="Video call">${ico("video")}</button><button class="ibtn" id="cCall" aria-label="Voice call">${ico("phone")}</button>`;
+    <button class="ibtn" id="cVid" aria-label="Video call">${ico("video")}</button><button class="ibtn" id="cCall" aria-label="Voice call">${ico("phone")}</button><button class="ibtn" id="cMore" aria-label="More">${ico("more")}</button>`;
+  $("#cMore").onclick=()=>reportMenu(S.peer);
   $("#cBack").onclick=closeChat; $("#cVid").onclick=()=>startCall(S.peer,true); $("#cCall").onclick=()=>startCall(S.peer,false);
 }
 function renderMsgs(){
@@ -1041,7 +1078,10 @@ function newSession(peer, video, outgoing){
   sess.onDoc=d=>{
     if(d.ringingAt && !sess.peerRinging && !sess.startedAt){ sess.peerRinging=true; const p=$("#callSt"); if(p) p.textContent="Ringing…"; sess.log("peer ringing"); }
     const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
-  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why); hideMini(); clearTimeout(sess.idleT); clearInterval(sess.qT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
+  sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why);
+    try{ const h=sess.qhist||[], avg=i=>h.length?Math.round(h.reduce((a,x)=>a+x[i],0)/h.length):null;
+      if(sess.id) api.saveCallQ(sess.id, {at:Date.now(), connected:!!sess.startedAt, route:sess.stats?sess.stats.route:"", proto:sess.stats?sess.stats.proto:"",
+        rtt:avg(0), loss:avg(1), jitter:avg(2), maxRtt:h.length?Math.max(...h.map(x=>x[0])):null, secs:sess.startedAt?Math.round((Date.now()-sess.startedAt)/1000):0, video:!!sess.video, end:why||""}); }catch(e){} hideMini(); clearTimeout(sess.idleT); clearInterval(sess.qT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";

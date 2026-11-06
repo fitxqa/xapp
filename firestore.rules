@@ -2,20 +2,34 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
+    // Admins: Firestore → admins → a document whose ID is the admin's user ID (shown on the admin panel's sign-in page)
+    function isAdmin() { return signed() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    // blocked users can't send messages, call or post status
+    function allowed() { return signed() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('blocked', false) != true; }
+
+    match /admins/{uid} {
+      allow get: if signed() && request.auth.uid == uid;
+    }
 
     // Public app: anyone signed in can open one profile, or look up by exact username/email (max 10 results),
-    // but nobody can download the whole member list at once.
+    // but nobody except the admin can download the whole member list.
     match /users/{uid} {
       allow get: if signed();
-      allow list: if signed() && request.query.limit <= 10;
-      allow write: if signed() && request.auth.uid == uid;
+      allow list: if (signed() && request.query.limit <= 10) || isAdmin();
+      // users edit their own profile, but can't unblock themselves
+      allow create: if signed() && request.auth.uid == uid && !('blocked' in request.resource.data) && !('deleted' in request.resource.data);
+      allow update: if signed() && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['blocked', 'deleted']);
+      allow update, delete: if isAdmin();
     }
     match /chats/{chatId} {
       allow read: if signed() && request.auth.uid in resource.data.members;
       allow create, update: if signed() && request.auth.uid in request.resource.data.members
         && request.resource.data.members.size() == 2;
       match /messages/{msgId} {
-        allow read, create: if signed() && chatId.split('_').hasAny([request.auth.uid]);
+        // private: only the two people in the chat (the admin can't read messages)
+        allow read: if signed() && chatId.split('_').hasAny([request.auth.uid]);
+        allow create: if allowed() && chatId.split('_').hasAny([request.auth.uid]);
         // members may mark read or hide a message for themselves; only the sender may delete it for everyone
         allow update: if signed() && chatId.split('_').hasAny([request.auth.uid])
           && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'hiddenFor'])
@@ -23,19 +37,40 @@ service cloud.firestore {
       }
     }
     match /calls/{callId} {
-      allow create: if signed() && request.resource.data.caller == request.auth.uid;
+      allow create: if allowed() && request.resource.data.caller == request.auth.uid;
       allow read, update: if signed()
         && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid);
+      allow read: if isAdmin();
       match /{side}/{candId} { allow read, create: if signed(); }
     }
     match /statuses/{sid} {
       allow read: if signed();
-      allow create: if signed() && request.resource.data.uid == request.auth.uid;
-      allow delete: if signed() && resource.data.uid == request.auth.uid;
+      allow create: if allowed() && request.resource.data.uid == request.auth.uid;
+      allow delete: if signed() && (resource.data.uid == request.auth.uid || isAdmin());
     }
     match /media/{mediaId} {
       allow read, create: if signed();
       match /parts/{part} { allow read, create: if signed(); }
+    }
+
+    // daily totals: each message / sign-up adds exactly 1 (no message content)
+    match /stats/{day} {
+      allow read: if isAdmin();
+      allow create: if signed() && request.resource.data.keys().hasOnly(['day', 'msgs', 'signups'])
+        && request.resource.data.get('msgs', 1) == 1 && request.resource.data.get('signups', 1) == 1;
+      allow update: if signed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['msgs', 'signups'])
+        && request.resource.data.get('msgs', 0) <= resource.data.get('msgs', 0) + 1
+        && request.resource.data.get('signups', 0) <= resource.data.get('signups', 0) + 1;
+    }
+    // messages from Xapp to everyone
+    match /announcements/{id} {
+      allow read: if signed();
+      allow write: if isAdmin();
+    }
+    // users report other users; only the admin reads them
+    match /reports/{id} {
+      allow create: if signed() && request.resource.data.from == request.auth.uid;
+      allow read, update, delete: if isAdmin();
     }
   }
 }
