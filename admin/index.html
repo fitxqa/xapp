@@ -165,6 +165,7 @@ auth.onAuthStateChanged(async u => {
   $("#notAdmin").classList.add("hidden"); $("#siForm").classList.remove("hidden");
   if(!u){ $("#signin").classList.remove("hidden"); $("#app").classList.add("hidden"); return; }
   let admin=false; try{ admin=(await C("admins").doc(u.uid).get()).exists; }catch(e){}
+  if(!admin){ try{ await C("reports").limit(1).get(); admin=true; }catch(e){} }   // admin set in the rules
   if(!admin){ $("#signin").classList.remove("hidden"); $("#app").classList.add("hidden"); $("#siForm").classList.add("hidden");
     $("#notAdmin").classList.remove("hidden"); $("#myUid").value=u.uid; $("#siHint").textContent="Signed in as "+u.email.replace("@"+LOGIN_DOMAIN,""); return; }
   $("#signin").classList.add("hidden"); $("#app").classList.remove("hidden"); $("#who").textContent=u.email.replace("@"+LOGIN_DOMAIN,"");

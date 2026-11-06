@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signed() { return request.auth != null; }
     // Admins: Firestore → admins → a document whose ID is the admin's user ID (shown on the admin panel's sign-in page)
-    function isAdmin() { return signed() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function isAdmin() { return signed() && (request.auth.uid == 'j3mwn7dQ5mR934aTEiNjFp5g68w2' || exists(/databases/$(database)/documents/admins/$(request.auth.uid))); }
     // blocked users can't send messages, call or post status
     function allowed() { return signed() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('blocked', false) != true; }
 
