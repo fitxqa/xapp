@@ -590,7 +590,6 @@ function renderSettings(L){
     <div class="sg-h">Account</div><div class="sg">
       ${S.isAdmin?srow("admin","shield","Admin panel",{sub:"Users, calls, reports, announcements"}):""}
       ${srow("contactsTab","users","Contacts",{val:String(myContacts().length)})}
-      ${srow("uid","user","User ID",{sub:esc(S.me.uid)+" · tap to copy",right:""})}
       ${srow("logout","logout","Sign out",{danger:true,right:""})}
     </div>
   </div>`;
