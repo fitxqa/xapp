@@ -297,7 +297,7 @@ function phones(v){
     <div class="list">${list.map(u=>{ const a=u.diagApp||{}, g=u.diagBg||{};
       return `<div class="row">${av(u)}<div class="mid"><b>${esc(u.name)} <span class="q">@${esc(u.username||"")}</span></b>
         <small>${esc(g.device||a.manufacturer||"")}${a.app?" · Xapp "+esc(a.app):""} · reported ${when(a.at)}</small>
-        <div class="checks">${y(a.signedIn,"Background calls")}${y(a.notifications,"Notifications")}${y(a.batteryUnrestricted,"Battery unrestricted")}${y(a.microphone,"Microphone")}${y(a.fullScreenAllowed,"Full-screen calls")}${y(a.callPopup,"Call pop-up")}</div>
+        <div class="checks">${y(a.signedIn,"Background calls")}${y(a.notifications,"Notifications")}${y(a.batteryUnrestricted,"Battery unrestricted")}${y(a.microphone,"Microphone")}${y(a.fullScreenAllowed,"Full-screen calls")}${y(a.callPopup,"Call pop-up")}${a.pushMode!=null?y(!!a.pushMode,"Battery saver (push)"):""}</div>
         <div class="q" style="margin-top:6px">Listener started: <b>${when(g.startedAt)}</b> · last call noticed: <b>${when(g.lastCallSeenAt)}</b>${g.lastCallSeenAt?(g.inForeground?" (app open)":" (app closed)"):""} · last ring: <b>${when(g.lastRingShownAt)}</b></div>
         ${g.callListenerError?`<div class="q" style="color:var(--bad)">Error ${when(g.errAt)}: ${esc(String(g.callListenerError).slice(0,160))}</div>`:""}</div></div>`; }).join("") || `<div class="empty">No phone reports yet</div>`}</div>`;
   v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; phones(v); });

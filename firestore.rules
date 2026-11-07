@@ -27,6 +27,10 @@ service cloud.firestore {
       allow read: if signed();
       allow write: if signed() && request.auth.uid == uid && request.resource.data.keys().hasOnly(['lastSeen']);
     }
+    // Google push token of each phone: only its owner writes it (the Cloudflare Worker reads it with the Firebase key)
+    match /tokens/{uid} {
+      allow read, write: if signed() && request.auth.uid == uid;
+    }
     // phone / call diagnostics: the owner writes, the owner and the admin read
     match /diag/{uid} {
       allow read: if signed() && (request.auth.uid == uid || isAdmin());

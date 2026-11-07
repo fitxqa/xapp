@@ -122,6 +122,17 @@ function makeFire(){
     cleanProfile(){ if(!me) return; const del=firebase.firestore.FieldValue.delete();
       C("users").doc(me).update({diagBg:del, diagApp:del, diagNet:del, diagCall:del}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
+    /* Google push through the Cloudflare Worker: wakes the other phone (call / cancel / message / test) */
+    async push(type, data){
+      const w=CFG.cfWorker; if(!w||!w.url||!auth.currentUser) return null;
+      try{ const u=new URL(w.url); u.pathname="/notify"; u.search="";
+        const r=await fetch(u.toString(),{method:"POST", headers:{"content-type":"application/json","x-app-key":w.key||""},
+          body:JSON.stringify({type, ...data, idToken:await auth.currentUser.getIdToken()})});
+        return await r.json().catch(()=>({ok:r.ok}));
+      }catch(e){ return {ok:false, error:String(e&&e.message||e)}; }
+    },
+    async pushStatus(){ const w=CFG.cfWorker; if(!w||!w.url) return null;
+      try{ const u=new URL(w.url); u.pathname="/status"; u.search=""; const r=await fetch(u.toString(),{headers:{"x-app-key":w.key||""}}); return await r.json(); }catch(e){ return null; } },
     async isAdmin(){ try{ return (await C("admins").doc(me).get()).exists; }catch(e){ return false; } },
     report(uid, reason){ return C("reports").add({from:me, about:uid, reason, at:Date.now(), status:"open"}); },
     watchAnnouncements(cb){ return C("announcements").orderBy("at","desc").limit(1).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()}))), ()=>{}); },
@@ -152,6 +163,7 @@ function makeFire(){
       await ref.set({members:[me,peer].sort(), last:preview(m), lastAt:Date.now(), lastFrom:me, ["unread_"+peer]:firebase.firestore.FieldValue.increment(1)},{merge:true});
       await ref.collection("messages").add({...m, from:me, at:Date.now(), read:false});
       this.bumpStat("msgs");
+      this.push("msg",{to:peer, chat:cid, text:preview(m)});
     },
     hideMessage(peer, id){ return C("chats").doc(chatId(me,peer)).collection("messages").doc(id).update({hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)}); },
     async deleteForAll(peer, m, isLast){
@@ -201,6 +213,7 @@ function makeFire(){
       pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
       const offer = await pc.createOffer(); offer.sdp=tuneSdp(offer.sdp); await pc.setLocalDescription(offer);
       await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now()});
+      this.push("call",{id:ref.id, to:peer, video:!!video});
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
         if(d.answer && !pc.currentRemoteDescription && !sess.answering){ sess.answering=true;
@@ -285,7 +298,7 @@ function makeDemo(){
     async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
     ping(){}, seenNow(){}, cleanProfile(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
-    report(){ return Promise.resolve(); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
+    report(){ return Promise.resolve(); }, push(){ return Promise.resolve(null); }, pushStatus(){ return Promise.resolve(null); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -408,7 +421,7 @@ api.onAuth(user=>{
   subs.push(api.watchAnnouncements(showAnnouncement));
   if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
-  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); }
+  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); setTimeout(pushSetup,2500); }
   cfIce();
   api.seenNow(); api.cleanProfile(); setActive(true);
 });
@@ -557,6 +570,7 @@ function bgSection(){
     ${r("bgPop","bell","Call pop-up",b.callPopup!==false,"Tap › turn on Pop on screen")}
     ${r("bgBattery","battery","Battery unrestricted",!!b.batteryUnrestricted,"Tap and choose Allow")}
     ${srow("bgAuto","rocket","Auto-launch",{val:b.manufacturer?esc(b.manufacturer):""})}
+    ${srow("bgPush","battery","Battery saver ringing",{right:state(!!(S.push&&S.push.on)), sub:!S.push?"Checking…":S.push.on?"Google push wakes the phone, like WhatsApp":!S.push.token||!S.push.worker?"Not available: "+esc(S.push.err||"no push"):"Off · always-on connection (uses more battery)", warn:!!(S.push&&!S.push.on&&(!S.push.token||!S.push.worker))})}
     ${srow("bgTest","phone","Test ringing",{sub:"Tap, then press Home. It rings in 8 seconds"})}
     <div id="bgDiag" style="padding:8px 14px 12px;font-size:12px;line-height:1.5;color:var(--muted,#888)"></div>
   </div>`;
@@ -625,7 +639,12 @@ $("#list").onclick=e=>{
     if(a==="bgMic") return nat("Background","openAppInfo");
     if(a==="bgFull") return nat("Background","openFullScreenSettings");
     if(a==="bgPop") return nat("Background","openCallChannel");
-    if(a==="bgTest"){ toast("Press Home now. Xapp will ring in 8 seconds"); return nat("Background","testRing"); }
+    if(a==="bgTest"){ toast("Press Home now. Xapp will ring in 8 seconds");
+      if(S.push&&S.push.on){ setTimeout(async()=>{ const r=await api.push("test",{to:S.me.uid}); if(!r||!r.ok){ nat("Background","testRing"); } },8000); return; }   // through Google push, like a real call
+      return nat("Background","testRing"); }
+    if(a==="bgPush"){ if(!S.push||!S.push.token||!S.push.worker){ toast("Google push isn't available on this phone yet"); return pushSetup(); }
+      const turnOn=!S.push.on; try{ localStorage.setItem("xappAlwaysOn", turnOn?"0":"1"); }catch(e){}
+      toast(turnOn?"Battery saver ringing on":"Always-on connection on"); return pushSetup(); }
     if(a==="bgOver") return nat("Background","openOverlaySettings");
     if(a==="bgAuto") return nat("Background","openAutostart");
     if(a==="logout") return api.logout();
@@ -1011,6 +1030,17 @@ async function bgSignIn(u,p,tries=5){
 }
 /* On every app open: if background calls are off on this phone, ask once for the password so they turn on again. */
 let bgAsked=false;
+/* Google push (battery saver): when this phone has a push token and the Worker can send pushes,
+   Xapp drops its always-on connection; calls wake the phone like WhatsApp. */
+async function pushSetup(){
+  if(!isNative()||api.demo) return;
+  let alwaysOn=false; try{ alwaysOn=localStorage.getItem("xappAlwaysOn")==="1"; }catch(e){}
+  const [t, st] = await Promise.all([nat("Background","pushToken").catch(e=>({error:String(e)})), api.pushStatus()]);
+  S.push={token:!!(t&&t.token), worker:!!(st&&st.push), err:(t&&t.error)||(st&&st.pushError)||(!st?"Worker not reachable":"")};
+  const on=S.push.token && S.push.worker && !alwaysOn;
+  try{ await nat("Background","setPushMode",{on}); }catch(e){}
+  S.push.on=on; bgRefresh();
+}
 async function bgEnsure(){
   if(!isNative()||api.demo||bgAsked) return;
   try{ const st=await nat("Background","status"); S.bg=st;
@@ -1124,7 +1154,7 @@ function newSession(peer, video, outgoing){
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
     const p=$("#callSt"); if(p) p.textContent= why==="declined"?"Busy":why==="missed"?"No answer":"Call ended";
     if(sess.minimized){ $("#call").hidden=true; $("#call").innerHTML=""; } else setTimeout(()=>{ $("#call").hidden=true; $("#call").innerHTML=""; $("#call").classList.remove("idle"); },why==="ended"?600:1400); call=null; };
-  sess.hangup=()=>{ if(sess.closed) return; sess.setStatus(sess.startedAt?{status:"ended",endedAt:Date.now()}:{status:sess.outgoing?"missed":"declined",endedAt:Date.now()}); sess.close("ended"); };
+  sess.hangup=()=>{ if(sess.closed) return; if(sess.outgoing && !sess.startedAt && sess.id) api.push("cancel",{id:sess.id, to:sess.peer}); sess.setStatus(sess.startedAt?{status:"ended",endedAt:Date.now()}:{status:sess.outgoing?"missed":"declined",endedAt:Date.now()}); sess.close("ended"); };
   return sess;
 }
 function callStatusText(sess){

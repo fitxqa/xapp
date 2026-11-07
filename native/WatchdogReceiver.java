@@ -14,7 +14,7 @@ public class WatchdogReceiver extends BroadcastReceiver {
 
     @Override public void onReceive(Context ctx, Intent intent) {
         try {
-            if (!NativeWatcher.signedIn(ctx)) return;
+            if (!NativeWatcher.needService(ctx)) return;   // signed out, or Google push does the waking
             if (!CallService.running) CallService.start(ctx, false);
             else NativeWatcher.refresh(ctx);
         } catch (Exception ignored) {}

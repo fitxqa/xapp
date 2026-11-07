@@ -215,4 +215,58 @@ final class NativeWatcher {
     }
 
     static String str(Object o, String def) { return o == null ? def : o.toString(); }
+
+    // ---------------- Google push ----------------
+    static boolean pushMode(Context ctx) { return prefs(ctx).getBoolean("pushMode", false); }
+    /** The always-on service is only needed when Google push isn't working on this phone. */
+    static boolean needService(Context ctx) { return signedIn(ctx) && !pushMode(ctx); }
+
+    /** Push token → tokens/{uid} (the Worker reads it to wake this phone). */
+    static void saveToken(Context ctx, String token) {
+        try {
+            FirebaseApp fa = app(ctx); if (fa == null || token == null) return;
+            FirebaseUser u = FirebaseAuth.getInstance(fa).getCurrentUser(); if (u == null) return;
+            Map<String, Object> t = new HashMap<>();
+            t.put("fcm", token); t.put("at", System.currentTimeMillis()); t.put("platform", "android");
+            FirebaseFirestore.getInstance(fa).collection("tokens").document(u.getUid()).set(t);
+        } catch (Exception ignored) {}
+    }
+
+    /** Push said someone is calling: ring now, then watch the call so the ringing stops when it ends. */
+    static synchronized void onPushCall(Context ctx, String id, String from, String name, boolean video) {
+        if (id == null) return;
+        final Context app = ctx.getApplicationContext(); appCtx = app;
+        holdAwake(app, 45000);
+        String nm = name != null && !name.isEmpty() ? name : (from != null ? cachedName(app, from) : null);
+        if (nm == null) nm = "Incoming call";
+        if (from != null && name != null) remember(app, from, name);
+        if (!ringing.containsKey(id)) {
+            ringing.put(id, new String[] { nm, video ? "1" : "0" });
+            if (!MainActivity.inForeground) CallNotifications.showIncoming(app, id, nm, video);
+            try {
+                FirebaseApp fa = app(app);
+                if (fa != null) {
+                    FirebaseFirestore fs = FirebaseFirestore.getInstance(fa);
+                    fs.collection("calls").document(id).update("ringingAt", System.currentTimeMillis());   // caller sees "Ringing…"
+                    FirebaseUser u = FirebaseAuth.getInstance(fa).getCurrentUser();
+                    if (u != null) { Map<String, Object> e = new HashMap<>(); e.put("lastCallSeenAt", System.currentTimeMillis()); e.put("inForeground", MainActivity.inForeground); e.put("lastRingShownAt", System.currentTimeMillis()); e.put("via", "push"); diag(fs, u.getUid(), e); }
+                }
+            } catch (Exception ignored) {}
+        }
+        start(app);   // the call listener sees when the call is answered elsewhere / cancelled / missed
+        main.postDelayed(() -> { synchronized (NativeWatcher.class) { if (pushMode(app) && ringing.isEmpty() && !CallService.running) stop(); } }, 60000);
+    }
+
+    static synchronized void onPushCancel(Context ctx, String id) {
+        Context app = ctx.getApplicationContext();
+        String[] r = id != null ? ringing.remove(id) : null;
+        CallNotifications.cancelIncoming(app);
+        if (r != null && !MainActivity.inForeground) CallNotifications.showMissed(app, id, r[0], "1".equals(r[1]));
+    }
+
+    static void onPushMessage(Context ctx, String chatId, String from, String name, String text) {
+        Context app = ctx.getApplicationContext();
+        if (MainActivity.inForeground || !prefs(app).getBoolean("msgNotif", true) || chatId == null) return;
+        CallNotifications.showMessage(app, chatId, name != null && !name.isEmpty() ? name : "Xapp", text != null ? text : "New message");
+    }
 }

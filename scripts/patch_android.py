@@ -16,6 +16,10 @@ app_parts = '''
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps a private calling app connected so incoming calls can ring" />
         </service>
+        <service android:name=".XappMessagingService" android:exported="false">
+            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>
+        </service>
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="xapp_messages" />
         <receiver android:name=".HangupReceiver" android:exported="false" />
         <receiver android:name=".WatchdogReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
@@ -45,6 +49,7 @@ dependencies {
     implementation platform("com.google.firebase:firebase-bom:35.1.0")
     implementation "com.google.firebase:firebase-auth"
     implementation "com.google.firebase:firebase-firestore"
+    implementation "com.google.firebase:firebase-messaging"
     implementation "com.google.android.gms:play-services-location:21.3.0"
 }
 android {
@@ -83,3 +88,18 @@ shutil.copy("assets/splash-system-icon.png", f"{res}/drawable-nodpi/xapp_splash_
 t=t.replace('<item name="android:background">@drawable/splash</item>','<item name="android:background">@drawable/splash</item>\n        <item name="windowSplashScreenBackground">@color/xapp_splash_bg</item>\n        <item name="android:windowBackground">@color/xapp_splash_bg</item>\n        <item name="windowSplashScreenAnimatedIcon">@drawable/xapp_splash_icon</item>\n        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>')
 open(st,"w").write(t)
 print("splash theme patched")
+
+
+# ---- Firebase settings as Android resources, so Google push works even when Xapp was fully closed ----
+import os, json as _json
+_cfg = open("www/config.js").read()
+def _v(k):
+    mm = re.search(k + r'\s*:\s*"([^"]*)"', _cfg); return mm.group(1) if mm else ""
+_app_id = _v("androidAppId") or _v("appId")
+_vals = {"google_app_id": _app_id, "gcm_defaultSenderId": _v("messagingSenderId"), "google_api_key": _v("apiKey"),
+         "google_crash_reporting_api_key": _v("apiKey"), "project_id": _v("projectId"), "google_storage_bucket": _v("storageBucket")}
+os.makedirs("android/app/src/main/res/values", exist_ok=True)
+open("android/app/src/main/res/values/xapp_firebase.xml", "w").write(
+    '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n' +
+    "".join(f'    <string name="{k}" translatable="false">{v}</string>\n' for k, v in _vals.items() if v) + '</resources>\n')
+print("Firebase resources:", ", ".join(k for k, v in _vals.items() if v), "| Android app id:" , "yes" if _v("androidAppId") else "no (web id)")

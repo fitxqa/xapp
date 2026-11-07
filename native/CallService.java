@@ -66,6 +66,9 @@ public class CallService extends Service {
             try { ServiceCompat.startForeground(this, ID_SERVICE, n, Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0); }
             catch (Exception ignored) { stopSelf(); return START_NOT_STICKY; }
         }
+        if (!inCall && NativeWatcher.pushMode(this) && callPeer == null) {   // Google push mode: no always-on service
+            running = false; stopForeground(true); stopSelf(); return START_NOT_STICKY;
+        }
         running = true;
         NativeWatcher.start(this);
         watchNetwork();
@@ -75,7 +78,7 @@ public class CallService extends Service {
 
     /** Xapp swiped away from recent apps: some phones then stop the service, so ask Android to bring it back in a few seconds. */
     @Override public void onTaskRemoved(Intent rootIntent) {
-        if (NativeWatcher.signedIn(this)) WatchdogReceiver.schedule(getApplicationContext(), 3000);
+        if (NativeWatcher.needService(this)) WatchdogReceiver.schedule(getApplicationContext(), 3000);
         super.onTaskRemoved(rootIntent);
     }
 
@@ -106,7 +109,7 @@ public class CallService extends Service {
         running = false;
         try { if (netCb != null) ((android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).unregisterNetworkCallback(netCb); } catch (Exception ignored) {}
         netCb = null;
-        if (NativeWatcher.signedIn(this)) WatchdogReceiver.schedule(getApplicationContext(), 5000);   // killed, not signed out: come back
+        if (NativeWatcher.needService(this)) WatchdogReceiver.schedule(getApplicationContext(), 5000);   // killed, not signed out: come back
         try {
             com.google.firebase.FirebaseApp fa = NativeWatcher.app(this);
             com.google.firebase.auth.FirebaseUser u = fa == null ? null : com.google.firebase.auth.FirebaseAuth.getInstance(fa).getCurrentUser();

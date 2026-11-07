@@ -33,7 +33,7 @@ public class MainActivity extends BridgeActivity {
         handleCallIntent(getIntent());
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 501);
-        try { if (NativeWatcher.signedIn(this)) { CallService.start(this, false); WatchdogReceiver.schedule(this, 15 * 60 * 1000L); } } catch (Exception ignored) {}
+        try { if (NativeWatcher.needService(this)) { CallService.start(this, false); WatchdogReceiver.schedule(this, 15 * 60 * 1000L); } } catch (Exception ignored) {}
     }
 
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); handleCallIntent(intent); }

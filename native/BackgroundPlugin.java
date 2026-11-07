@@ -83,11 +83,13 @@ public class BackgroundPlugin extends Plugin {
             pop = ch == null || ch.getImportance() >= NotificationManager.IMPORTANCE_HIGH;
         }
         r.put("callPopup", pop);
+        r.put("pushMode", NativeWatcher.pushMode(ctx));
+        r.put("hasPushToken", NativeWatcher.prefs(ctx).getString("fcmToken", null) != null);
         call.resolve(r);
     }
 
     @PluginMethod
-    public void start(PluginCall call) { if (NativeWatcher.signedIn(getContext())) CallService.start(getContext(), false); call.resolve(); }
+    public void start(PluginCall call) { if (NativeWatcher.needService(getContext())) CallService.start(getContext(), false); call.resolve(); }
 
     /** Ask Android to let Xapp run in the background (no battery restrictions). */
     @PluginMethod
@@ -202,7 +204,8 @@ public class BackgroundPlugin extends Plugin {
         Long started = call.getLong("startedAt");
         CallService.callStartedAt = started == null ? 0 : started;
         CallService.callHeld = Boolean.TRUE.equals(call.getBoolean("held", false));
-        if (NativeWatcher.signedIn(getContext()) || active) CallService.start(getContext(), active);
+        if (active || NativeWatcher.needService(getContext())) CallService.start(getContext(), active);
+        else if (CallService.running) CallService.stop(getContext());   // push mode: no "Ready to receive calls" service after a call
         call.resolve();
     }
 
@@ -322,5 +325,28 @@ public class BackgroundPlugin extends Plugin {
         h.postDelayed(() -> CallNotifications.showIncoming(ctx, "test", "Xapp test call", false), 8000);
         h.postDelayed(() -> CallNotifications.cancelIncoming(ctx), 26000);
         call.resolve();
+    }
+
+    /** Google push token for this phone (also saved to tokens/{uid}). */
+    @PluginMethod
+    public void pushToken(PluginCall call) {
+        try {
+            if (NativeWatcher.app(getContext()) == null) { JSObject r = new JSObject(); r.put("error", "not signed in"); call.resolve(r); return; }
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
+                .addOnSuccessListener(t -> { NativeWatcher.prefs(getContext()).edit().putString("fcmToken", t).apply(); NativeWatcher.saveToken(getContext(), t);
+                    JSObject r = new JSObject(); r.put("token", t); call.resolve(r); })
+                .addOnFailureListener(e -> { JSObject r = new JSObject(); r.put("error", String.valueOf(e.getMessage())); call.resolve(r); });
+        } catch (Exception e) { JSObject r = new JSObject(); r.put("error", String.valueOf(e.getMessage())); call.resolve(r); }
+    }
+
+    /** on = rely on Google push (battery saver, no always-on service); off = always-on connection. */
+    @PluginMethod
+    public void setPushMode(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        Context ctx = getContext();
+        NativeWatcher.prefs(ctx).edit().putBoolean("pushMode", on).apply();
+        if (on) { WatchdogReceiver.cancel(ctx); if (CallService.running && CallService.callPeer == null) CallService.stop(ctx); }
+        else if (NativeWatcher.signedIn(ctx)) { CallService.start(ctx, false); WatchdogReceiver.schedule(ctx, 15 * 60 * 1000L); }
+        JSObject r = new JSObject(); r.put("pushMode", on); call.resolve(r);
     }
 }
