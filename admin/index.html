@@ -174,15 +174,20 @@ auth.onAuthStateChanged(async u => {
 
 async function load(){
   const safe = p => p.catch(e => { console.warn(e); return null; });
-  const [us, cs, st, rp, an] = await Promise.all([
+  const [us, cs, st, rp, an, pr, dg] = await Promise.all([
     safe(C("users").limit(3000).get()),
     safe(C("calls").orderBy("createdAt","desc").limit(500).get()),
     safe(C("stats").orderBy("day","desc").limit(31).get()),
     safe(C("reports").orderBy("at","desc").limit(300).get()),
-    safe(C("announcements").orderBy("at","desc").limit(30).get())
+    safe(C("announcements").orderBy("at","desc").limit(30).get()),
+    safe(C("presence").limit(3000).get()),
+    safe(C("diag").limit(3000).get())
   ]);
   const docs = s => s ? s.docs.map(d => ({ id:d.id, ...d.data() })) : [];
-  D.users = docs(us).map(u => ({ uid:u.id, ...u })).sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
+  const P = Object.fromEntries(docs(pr).map(x=>[x.id,x])), G = Object.fromEntries(docs(dg).map(x=>[x.id,x]));
+  D.users = docs(us).map(u => { const p=P[u.id]||{}, g=G[u.id]||{};
+    return { uid:u.id, ...u, lastSeen:Math.max(u.lastSeen||0, p.lastSeen||0), diagApp:g.diagApp||u.diagApp, diagBg:g.diagBg||u.diagBg }; })
+    .sort((a,b)=>(b.lastSeen||0)-(a.lastSeen||0));
   D.calls = docs(cs); D.stats = docs(st); D.reports = docs(rp); D.ann = docs(an);
   if(!us) toast("Couldn't load users. Publish the new Firestore rules first.");
   const open = D.reports.filter(r=>r.status!=="done").length; $("#repN").textContent=open; $("#repN").classList.toggle("hidden", !open);

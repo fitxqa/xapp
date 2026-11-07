@@ -116,7 +116,11 @@ function makeFire(){
     removeContact(uid){ return C("users").doc(me).set({contacts:firebase.firestore.FieldValue.arrayRemove(uid)},{merge:true}); },
     logout(){ nat("Background","signOut"); return auth.signOut(); },
     emailFor(u){ return mail(u); },
-    ping(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },
+    // "online" signal: a tiny presence/{uid} doc, so contacts don't re-download the whole profile (with photo) every minute
+    ping(){ if(me) C("presence").doc(me).set({lastSeen:Date.now()}).catch(()=>{}); },
+    seenNow(){ if(me) C("users").doc(me).set({lastSeen:Date.now()},{merge:true}).catch(()=>{}); },   // profile copy: on open / leave only
+    cleanProfile(){ if(!me) return; const del=firebase.firestore.FieldValue.delete();
+      C("users").doc(me).update({diagBg:del, diagApp:del, diagNet:del, diagCall:del}).catch(()=>{}); },
     updateProfile(p){ return C("users").doc(me).set(p,{merge:true}); },
     async isAdmin(){ try{ return (await C("admins").doc(me).get()).exists; }catch(e){ return false; } },
     report(uid, reason){ return C("reports").add({from:me, about:uid, reason, at:Date.now(), status:"open"}); },
@@ -124,19 +128,21 @@ function makeFire(){
     saveCallQ(id, q){ if(id) C("calls").doc(id).set({["q_"+me]:q},{merge:true}).catch(()=>{}); },
     bumpStat(k){ const d=new Date(), day=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
       C("stats").doc(day).set({day, [k]:firebase.firestore.FieldValue.increment(1)},{merge:true}).catch(()=>{}); },
-    async getDiag(){ try{ return ((await C("users").doc(me).get({source:"server"})).data()||{}).diagBg||null; }catch(e){ return null; } },
-    saveDiag(k,d){ if(!me) return; const r=C("users").doc(me); r.update({[k]:d}).catch(()=>r.set({[k]:d},{merge:true}).catch(()=>{})); },
+    async getDiag(){ try{ return ((await C("diag").doc(me).get({source:"server"})).data()||{}).diagBg||null; }catch(e){ return null; } },
+    saveDiag(k,d){ if(!me) return; C("diag").doc(me).set({[k]:d},{merge:true}).catch(()=>{}); },
     /* Loads only the people this user knows (self, contacts, chat/call partners), one document each */
     watchUsers(cb){
-      const subs=new Map(), data={}, want=new Set([me]);
-      const emit=()=>cb(Object.values(data));
+      const subs=new Map(), data={}, want=new Set([me]), pres=new Map(), seen={};
+      let et=0; const emit=()=>{ clearTimeout(et); et=setTimeout(()=>cb(Object.values(data).map(x=>seen[x.uid]>(x.lastSeen||0)?{...x,lastSeen:seen[x.uid]}:x)),60); };
+      const presOn=()=>{ if(api._bg) return; for(const id of want) if(id!==me && !pres.has(id)) pres.set(id, C("presence").doc(id).onSnapshot(s=>{ const v=s.exists&&s.data().lastSeen; if(v&&v!==seen[id]){ seen[id]=v; emit(); } }, ()=>{})); };
+      this._presence = on => { if(on) presOn(); else { pres.forEach(u=>u()); pres.clear(); } };
       const sync=()=>{ for(const id of want) if(!subs.has(id)) subs.set(id, C("users").doc(id).onSnapshot(s=>{
         if(s.exists){ const x={uid:s.id,...s.data()}; if(!x.name) x.name=x.username||"Xapp user"; data[s.id]=x;
           if(s.id===me) (x.contacts||[]).forEach(i=>want.add(i)), sync(); }
-        emit(); }, ()=>{})); };
+        emit(); }, ()=>{})); presOn(); };
       this.wantUsers = ids => { let n=false; ids.forEach(i=>{ if(i&&!want.has(i)){ want.add(i); n=true; } }); if(n) sync(); };
       sync();
-      return ()=>{ subs.forEach(u=>u()); subs.clear(); };
+      return ()=>{ subs.forEach(u=>u()); subs.clear(); pres.forEach(u=>u()); pres.clear(); };
     },
     wantUsers(){},
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
@@ -278,7 +284,7 @@ function makeDemo(){
     async addContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=[...new Set([...(m.contacts||[]),uid])]; emitAll(); },
     async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
-    ping(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
+    ping(){}, seenNow(){}, cleanProfile(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
     report(){ return Promise.resolve(); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
@@ -404,9 +410,17 @@ api.onAuth(user=>{
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); }
   cfIce();
-  api.ping(); clearInterval(S.pingT); S.pingT=setInterval(()=>{ if(!document.hidden) api.ping(); },60000);
+  api.seenNow(); api.cleanProfile(); setActive(true);
 });
-document.addEventListener("visibilitychange",()=>{ if(!document.hidden){ api.ping(); if(S.peer) api.markRead(S.peer); } });
+/* Battery: while Xapp is in the background only the call/message listeners stay on. The "online" signal and
+   contacts' online status stop, and start again when Xapp comes back on screen. */
+function setActive(on){
+  if(!S.me) return;
+  if(on){ api._bg=false; api.ping(); clearInterval(S.pingT); S.pingT=setInterval(()=>{ if(!api._bg) api.ping(); },60000); api._presence&&api._presence(true); if(S.peer) api.markRead(S.peer); }
+  else if(!api._bg){ api._bg=true; clearInterval(S.pingT); S.pingT=0; api._presence&&api._presence(false); api.seenNow(); }
+}
+document.addEventListener("visibilitychange",()=>setActive(!document.hidden));
+natOn("App","appStateChange", st=>setActive(!!(st&&st.isActive)));
 
 /* message from Xapp (sent from the admin panel), shown once */
 function showAnnouncement(list){

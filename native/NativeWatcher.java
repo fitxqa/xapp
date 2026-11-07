@@ -197,12 +197,13 @@ final class NativeWatcher {
             .addOnFailureListener(e -> cb.got("Xapp"));
     }
 
-    /** Writes the service state into users/{uid}.diagBg (read back by the diagnostics check). */
+    /** Writes the service state into diag/{uid}.diagBg (read back by the diagnostics check). */
     static void diag(FirebaseFirestore fs, String uid, Map<String, Object> fields) {
         try {
+            // own small document (diag/{uid}), so contacts don't re-download the whole profile each time
             Map<String, Object> up = new HashMap<>();
-            for (Map.Entry<String, Object> e : fields.entrySet()) up.put("diagBg." + e.getKey(), e.getValue());
-            fs.collection("users").document(uid).update(up);
+            up.put("diagBg", fields);
+            fs.collection("diag").document(uid).set(up, com.google.firebase.firestore.SetOptions.merge());
         } catch (Exception ignored) {}
     }
 
