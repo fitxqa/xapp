@@ -82,6 +82,14 @@ if E.get("CW"):
         else: print("::warning title=Cloudflare worker::answered but no relay in reply: "+json.dumps(d)[:200])
     except Exception as e:
         print(f"::warning title=Cloudflare worker::FAILED {type(e).__name__}: {e}")
+    try:   # Google push status (Worker v4)
+        req=urllib.request.Request(E["CW"].rstrip("/")+"/status", headers={"x-app-key":E.get("CK","").strip(),"User-Agent":"xapp-check"})
+        try: resp=urllib.request.urlopen(req,timeout=15); body=resp.read().decode("utf-8","replace")
+        except urllib.error.HTTPError as he: body=he.read().decode("utf-8","replace")
+        d=json.loads(body)
+        print(f"::notice title=Worker push::version {d.get('version')} · relay {d.get('relay')} · push {d.get('push')} · {d.get('pushError') or 'OK'}")
+    except Exception as e:
+        print(f"::warning title=Worker push::FAILED {type(e).__name__}: {e}")
 if not servers: print("::error::No relay secrets available to this workflow"); sys.exit(1)
 
 summary = []
