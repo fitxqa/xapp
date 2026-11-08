@@ -244,7 +244,11 @@ function makeFire(){
       pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
       const offer = await pc.createOffer(); offer.sdp=tuneSdp(offer.sdp); await pc.setLocalDescription(offer);
       await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now(), relay:sess.relay||"auto"});
-      this.push("call",{id:ref.id, to:peer, video:!!video});
+      // wake the other phone (Google push); try again if it hasn't started ringing, and keep the result for the admin panel
+      const ring = async n => { const r = await this.push("call",{id:ref.id, to:peer, video:!!video});
+        ref.update({["push"+n]: r ? (r.ok ? "ok" : String(r.error||"failed").slice(0,140)) : "worker not reachable"}).catch(()=>{}); };
+      ring(1);
+      [5000,12000,20000].forEach((ms,i)=>setTimeout(()=>{ if(!sess.peerRinging && !sess.startedAt && !sess.closed){ sess.log("re-ring "+(i+2)); ring(i+2); } }, ms));
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
         if(d.answer && !pc.currentRemoteDescription && !sess.answering){ sess.answering=true;
