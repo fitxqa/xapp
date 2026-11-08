@@ -1,5 +1,5 @@
 /**
- * Xapp Cloudflare Worker (version 5: groups)
+ * Xapp Cloudflare Worker (version 6: groups, password-free background calls)
  *  1. Relay: fresh Cloudflare TURN login details (12 hours) so calls use the nearest data centre (Doha).
  *  2. Google push: wakes the other phone for calls and messages (like WhatsApp), so Xapp needs no always-on connection.
  *
@@ -15,7 +15,7 @@ const MY_FIREBASE_KEY = String.raw`PASTE_THE_WHOLE_KEY_FILE_HERE`;
 // ===================================================================================================================
 
 const FIREBASE_WEB_API_KEY = "AIzaSyAfvocJ8xYish8hfItCh9MwHue8-cFsHJA";   // Xapp's public web key (same as in the app)
-const VERSION = 5;
+const VERSION = 6;
 
 export default {
   async fetch(request, env0) {
@@ -59,9 +59,10 @@ export default {
 /* ---------------- Google push ---------------- */
 async function notify(b, sa) {
   const type = String(b.type || ""), to = String(b.to || "");
-  if (!["call", "cancel", "msg", "test", "gcall", "gcancel"].includes(type) || !to) return { ok: false, error: "bad request" };
+  if (!["call", "cancel", "msg", "test", "gcall", "gcancel", "signin"].includes(type) || !to) return { ok: false, error: "bad request" };
   const uid = await whoIs(b.idToken);                         // the signed-in Xapp user sending this
   if (!uid) return { ok: false, error: "not signed in" };
+  if (type === "signin") return { ok: true, token: await customToken(sa, uid) };   // background calls on the same phone, no password
   const token = await googleToken(sa);
   const doc = p => fsGet(sa, token, p);
 
@@ -148,6 +149,19 @@ async function googleToken(sa) {
   if (!j.access_token) throw new Error("Google login failed: " + (j.error_description || j.error || r.status));
   cached = { token: j.access_token, exp: now + (j.expires_in || 3600) };
   return cached.token;
+}
+
+/* Firebase custom token for one user (lets the phone's background service sign in as that user) */
+async function customToken(sa, uid) {
+  const now = Math.floor(Date.now() / 1000);
+  const enc = o => b64url(new TextEncoder().encode(JSON.stringify(o)));
+  const head = enc({ alg: "RS256", typ: "JWT" });
+  const claim = enc({ iss: sa.client_email, sub: sa.client_email, aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit", iat: now, exp: now + 3600, uid });
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(head + "." + claim));
+  return head + "." + claim + "." + b64url(new Uint8Array(sig));
 }
 
 function serviceAccount(v) {

@@ -54,6 +54,25 @@ public class BackgroundPlugin extends Plugin {
             .addOnFailureListener(e -> call.reject("Background sign-in failed: " + e.getMessage()));
     }
 
+    /** Background sign-in without the password: a one-time token from the Xapp Worker (made from the signed-in app session). */
+    @PluginMethod
+    public void signInToken(PluginCall call) {
+        Context ctx = getContext();
+        JSObject o = call.getObject("options", new JSObject());
+        NativeWatcher.prefs(ctx).edit()
+            .putString("apiKey", o.getString("apiKey")).putString("projectId", o.getString("projectId"))
+            .putString("appId", o.getString("appId")).putString("senderId", o.getString("messagingSenderId"))
+            .putString("bucket", o.getString("storageBucket")).apply();
+        FirebaseApp app;
+        try { app = NativeWatcher.app(ctx); } catch (Exception e) { call.reject("Firebase setup failed: " + e.getMessage()); return; }
+        if (app == null) { call.reject("Missing Firebase settings"); return; }
+        String token = call.getString("token");
+        if (token == null || token.isEmpty()) { call.reject("No token"); return; }
+        FirebaseAuth.getInstance(app).signInWithCustomToken(token)
+            .addOnSuccessListener(r -> { if (NativeWatcher.needService(ctx)) CallService.start(ctx, false); JSObject res = new JSObject(); res.put("ok", true); call.resolve(res); })
+            .addOnFailureListener(e -> call.reject("Background sign-in failed: " + e.getMessage()));
+    }
+
     @PluginMethod
     public void signOut(PluginCall call) {
         try { FirebaseApp a = NativeWatcher.app(getContext()); if (a != null) FirebaseAuth.getInstance(a).signOut(); } catch (Exception ignored) {}

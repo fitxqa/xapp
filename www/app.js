@@ -1178,9 +1178,18 @@ async function pushSetup(){
 async function bgEnsure(){
   if(!isNative()||api.demo||bgAsked) return;
   try{ const st=await nat("Background","status"); S.bg=st;
-    if(st && !st.signedIn && S.me && S.me.username){ bgAsked=true; toast("Background calls are off on this phone"); bgPasswordSheet(); }
+    if(st && !st.signedIn && S.me && S.me.username){ bgAsked=true;
+      if(await bgAutoSignIn()) return;                           // on by itself, no password
+      toast("Background calls are off on this phone"); bgPasswordSheet(); }
     else if(st && st.signedIn && !st.running) nat("Background","start");
   }catch(e){}
+}
+/* turn background calls on without asking for the password (one-time token from the Worker) */
+async function bgAutoSignIn(){
+  try{ const r=await api.push("signin",{to:"self"}); if(!r||!r.ok||!r.token) return false;
+    await nat("Background","signInToken",{token:r.token, options:FIREBASE_CONFIG},true);
+    bgRefresh(); setTimeout(pushSetup,1500); return true;
+  }catch(e){ return false; }
 }
 function bgPasswordSheet(){
   const sh=$("#sheet");
