@@ -1,5 +1,5 @@
 /**
- * Xapp Cloudflare Worker (version 4)
+ * Xapp Cloudflare Worker (version 5: groups)
  *  1. Relay: fresh Cloudflare TURN login details (12 hours) so calls use the nearest data centre (Doha).
  *  2. Google push: wakes the other phone for calls and messages (like WhatsApp), so Xapp needs no always-on connection.
  *
@@ -15,7 +15,7 @@ const MY_FIREBASE_KEY = String.raw`PASTE_THE_WHOLE_KEY_FILE_HERE`;
 // ===================================================================================================================
 
 const FIREBASE_WEB_API_KEY = "AIzaSyAfvocJ8xYish8hfItCh9MwHue8-cFsHJA";   // Xapp's public web key (same as in the app)
-const VERSION = 4;
+const VERSION = 5;
 
 export default {
   async fetch(request, env0) {
@@ -59,14 +59,26 @@ export default {
 /* ---------------- Google push ---------------- */
 async function notify(b, sa) {
   const type = String(b.type || ""), to = String(b.to || "");
-  if (!["call", "cancel", "msg", "test"].includes(type) || !to) return { ok: false, error: "bad request" };
+  if (!["call", "cancel", "msg", "test", "gcall", "gcancel"].includes(type) || !to) return { ok: false, error: "bad request" };
   const uid = await whoIs(b.idToken);                         // the signed-in Xapp user sending this
   if (!uid) return { ok: false, error: "not signed in" };
   const token = await googleToken(sa);
   const doc = p => fsGet(sa, token, p);
 
-  let data = { type, from: uid };
-  if (type === "call" || type === "cancel") {
+  let data = { type, from: uid }, targets = [to];
+  if (type === "gcall" || type === "gcancel") {                // group call: ring every member except the caller
+    const c = await doc(`calls/${b.id}`);
+    if (!c || !c.group || c.caller !== uid || !Array.isArray(c.members) || !c.members.includes(uid)) return { ok: false, error: "not your group call" };
+    if (type === "gcall" && c.status !== "ringing") return { ok: false, error: "call not ringing" };
+    const g = c.chat ? await doc(`chats/${c.chat}?mask.fieldPaths=name`) : null;
+    data = { type: type === "gcall" ? "call" : "cancel", from: uid, id: String(b.id), video: c.video ? "1" : "0", group: "1", title: (g && g.name) || "Group call" };
+    targets = c.members.filter(m => m !== uid);
+  } else if (type === "msg" && String(b.chat || "").startsWith("grp_")) {   // group message: every member except the sender
+    const g = await doc(`chats/${b.chat}?mask.fieldPaths=members&mask.fieldPaths=name`);
+    if (!g || !Array.isArray(g.members) || !g.members.includes(uid)) return { ok: false, error: "not in this group" };
+    data.chat = String(b.chat); data.text = String(b.text || "New message").slice(0, 200); data.title = g.name || "Group";
+    targets = g.members.filter(m => m !== uid);
+  } else if (type === "call" || type === "cancel") {
     const c = await doc(`calls/${b.id}`);                     // only the real caller of a real call can ring someone
     if (!c || c.caller !== uid || c.callee !== to) return { ok: false, error: "not your call" };
     if (type === "call" && c.status !== "ringing") return { ok: false, error: "call not ringing" };
@@ -80,15 +92,19 @@ async function notify(b, sa) {
   }
   const me = await doc(`users/${uid}?mask.fieldPaths=name&mask.fieldPaths=username`);
   data.name = type === "test" ? "Xapp test call" : ((me && (me.name || me.username)) || "Xapp");
+  if (data.group === "1") data.name = data.name + " · " + data.title;
 
-  const t = await doc(`tokens/${to}`);
-  if (!t || !t.fcm) return { ok: false, error: "no push token for this user (old Xapp version?)" };
-  const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
-    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ message: { token: t.fcm, data, android: { priority: "HIGH", ttl: type === "msg" ? "86400s" : "45s" } } })
-  });
-  if (!r.ok) return { ok: false, error: "fcm " + r.status + " " + (await r.text()).slice(0, 200) };
-  return { ok: true };
+  const results = await Promise.all(targets.slice(0, 256).map(async target => {
+    const t = await doc(`tokens/${target}`);
+    if (!t || !t.fcm) return "no push token (old Xapp version?)";
+    const r = await fetch(`https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: { token: t.fcm, data, android: { priority: "HIGH", ttl: data.type === "msg" ? "86400s" : "45s" } } })
+    });
+    return r.ok ? "ok" : "fcm " + r.status + " " + (await r.text()).slice(0, 120);
+  }));
+  const sent = results.filter(x => x === "ok").length;
+  return targets.length === 1 ? (sent ? { ok: true } : { ok: false, error: results[0] }) : { ok: sent > 0, sent, of: targets.length };
 }
 
 /* Firebase ID token → user ID */
@@ -107,7 +123,8 @@ async function fsGet(sa, token, path) {
   const r = await fetch(`https://firestore.googleapis.com/v1/projects/${sa.project_id}/databases/(default)/documents/${path}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!r.ok) return null;
   const j = await r.json(), out = {};
-  for (const [k, v] of Object.entries(j.fields || {})) out[k] = v.stringValue ?? v.booleanValue ?? (v.integerValue != null ? Number(v.integerValue) : v.doubleValue);
+  const val = v => v.arrayValue ? (v.arrayValue.values || []).map(val) : v.stringValue ?? v.booleanValue ?? (v.integerValue != null ? Number(v.integerValue) : v.doubleValue);
+  for (const [k, v] of Object.entries(j.fields || {})) out[k] = val(v);
   return out;
 }
 

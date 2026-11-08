@@ -55,7 +55,10 @@ function listTime(t){ const l=dayLabel(t); return l==="Today"?hm(t):l; }
 const dur = s => `${Math.floor(s/60)}:${pad(Math.floor(s%60))}`;
 const isOnline = u => u && Date.now()-(u.lastSeen||0) < 100000;
 const chatId = (a,b) => [a,b].sort().join("_");
-const peerOf = c => (c.members||[]).find(m=>m!==S.me.uid);
+const isGroup = p => typeof p==="string" && p.startsWith("grp_");
+const peerOf = c => isGroup(c.id) ? c.id : (c.members||[]).find(m=>m!==S.me.uid);
+const groupOf = id => S.chats.find(c=>c.id===id);
+const nameOf = uid => uid===S.me.uid ? "You" : ((S.users[uid]||{}).name || "Someone");
 function toast(t){ const el=$("#toast"); el.textContent=t; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,2600); }
 const readFile = f => new Promise((ok,no)=>{ const r=new FileReader(); r.onload=()=>ok(r.result); r.onerror=no; r.readAsDataURL(f); });
 async function shrinkImage(file, max=1600, q=.8){
@@ -159,19 +162,46 @@ function makeFire(){
     watchChats(cb){ return C("chats").where("members","array-contains",me).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     watchMessages(cid, cb){ return C("chats").doc(cid).collection("messages").orderBy("at").limitToLast(300).onSnapshot(s=>cb(s.docs.map(d=>({id:d.id,...d.data()})))); },
     async send(peer, m){
+      if(isGroup(peer)) return this.sendGroup(peer, m);
       const cid = chatId(me,peer), ref = C("chats").doc(cid);
       await ref.set({members:[me,peer].sort(), last:preview(m), lastAt:Date.now(), lastFrom:me, ["unread_"+peer]:firebase.firestore.FieldValue.increment(1)},{merge:true});
       await ref.collection("messages").add({...m, from:me, at:Date.now(), read:false});
       this.bumpStat("msgs");
       this.push("msg",{to:peer, chat:cid, text:preview(m)});
     },
-    hideMessage(peer, id){ return C("chats").doc(chatId(me,peer)).collection("messages").doc(id).update({hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)}); },
+    /* ---- groups ---- */
+    async sendGroup(gid, m){
+      const ref=C("chats").doc(gid), g=groupOf(gid)||{members:[]}, inc=firebase.firestore.FieldValue.increment(1), up={last:preview(m), lastAt:Date.now(), lastFrom:me};
+      g.members.filter(x=>x!==me).forEach(x=>up["unread_"+x]=inc);
+      await ref.update(up);
+      await ref.collection("messages").add({...m, from:me, at:Date.now(), read:false});
+      this.bumpStat("msgs");
+      if(m.type!=="system") this.push("msg",{to:gid, chat:gid, group:true, text:preview(m)});
+    },
+    async createGroup(name, members){
+      const gid="grp_"+C("chats").doc().id, all=[...new Set([me,...members])];
+      await C("chats").doc(gid).set({type:"group", name, members:all, admins:[me], createdBy:me, createdAt:Date.now(), last:"Group created", lastAt:Date.now(), lastFrom:me});
+      await C("chats").doc(gid).collection("messages").add({type:"system", text:"created the group", from:me, at:Date.now(), read:false});
+      return gid;
+    },
+    async groupSystem(gid, text){ const ref=C("chats").doc(gid); await ref.collection("messages").add({type:"system", text, from:me, at:Date.now(), read:false}); await ref.update({last:nameOf(me)+" "+text, lastAt:Date.now(), lastFrom:me}).catch(()=>{}); },
+    renameGroup(gid, name){ return C("chats").doc(gid).update({name}).then(()=>this.groupSystem(gid,`changed the group name to "${name}"`)); },
+    async addToGroup(gid, uids){ await C("chats").doc(gid).update({members:firebase.firestore.FieldValue.arrayUnion(...uids)}); return this.groupSystem(gid,"added "+uids.map(nameOf).join(", ")); },
+    async removeFromGroup(gid, uid){ await this.groupSystem(gid,"removed "+nameOf(uid)); const FV=firebase.firestore.FieldValue; return C("chats").doc(gid).update({members:FV.arrayRemove(uid), admins:FV.arrayRemove(uid)}); },
+    makeAdmin(gid, uid){ return C("chats").doc(gid).update({admins:firebase.firestore.FieldValue.arrayUnion(uid)}).then(()=>this.groupSystem(gid,"made "+nameOf(uid)+" an admin")); },
+    async leaveGroup(gid){ const g=groupOf(gid)||{members:[],admins:[]}, FV=firebase.firestore.FieldValue, up={members:FV.arrayRemove(me), admins:FV.arrayRemove(me)};
+      await this.groupSystem(gid,"left");
+      const others=g.members.filter(x=>x!==me);
+      if(others.length && !(g.admins||[]).some(a=>a!==me)) await C("chats").doc(gid).update({admins:FV.arrayUnion(others[0])});   // the group always keeps an admin
+      return C("chats").doc(gid).update(up); },
+    hideMessage(peer, id){ return C("chats").doc(isGroup(peer)?peer:chatId(me,peer)).collection("messages").doc(id).update({hiddenFor:firebase.firestore.FieldValue.arrayUnion(me)}); },
     async deleteForAll(peer, m, isLast){
-      const ref=C("chats").doc(chatId(me,peer));
+      const ref=C("chats").doc(isGroup(peer)?peer:chatId(me,peer));
       await ref.collection("messages").doc(m.id).update({type:"deleted", text:"", mediaId:null, lat:null, lng:null, deletedAt:Date.now()});
       if(isLast) await ref.set({last:"🚫 This message was deleted"},{merge:true});
     },
     async markRead(peer){
+      if(isGroup(peer)){ C("chats").doc(peer).update({["unread_"+me]:0}).catch(()=>{}); return; }
       const cid = chatId(me,peer), ref = C("chats").doc(cid);
       ref.set({members:[me,peer].sort(), ["unread_"+me]:0},{merge:true}).catch(()=>{});
       try{ const s = await ref.collection("messages").where("from","==",peer).where("read","==",false).get();
@@ -298,7 +328,7 @@ function makeDemo(){
     async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
     ping(){}, seenNow(){}, cleanProfile(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
-    report(){ return Promise.resolve(); }, push(){ return Promise.resolve(null); }, pushStatus(){ return Promise.resolve(null); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
+    report(){ return Promise.resolve(); }, createGroup(){ toast("Groups need an account"); return Promise.reject(); }, push(){ return Promise.resolve(null); }, pushStatus(){ return Promise.resolve(null); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -414,7 +444,10 @@ api.onAuth(user=>{
   subs.push(api.watchUsers(us=>{ S.users={}; us.forEach(u=>S.users[u.uid]=u);
     const mine=S.users[S.me.uid]; if(mine && (mine.blocked||mine.deleted)){ toast(mine.deleted?"This account was removed":"This account has been blocked by Xapp"); api.logout(); return; }
     if(call && S.users[call.peer]){ const h2=$("#call h2"), av=$("#call .info .av"); if(h2 && h2.textContent!==S.users[call.peer].name){ h2.textContent=S.users[call.peer].name; if(av) av.outerHTML=avatar(S.users[call.peer], av.className.replace(/^av\s*/,"")); } } if(S.users[S.me.uid]) S.me={...S.me,...S.users[S.me.uid]}; renderList(); if(S.peer) renderChatHead(); }));
-  subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.map(peerOf)); renderList(); }));
+  subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.flatMap(c=>isGroup(c.id)?(c.members||[]):[peerOf(c)]));
+    if(isGroup(S.peer) && !cs.some(c=>c.id===S.peer)){ toast("You're no longer in this group"); closeChat(); }
+    else if(isGroup(S.peer)) renderChatHead();
+    renderList(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
   { let un=api.watchIncoming(incoming, gone); api._reIncoming=()=>{ try{un();}catch(e){} un=api.watchIncoming(incoming, gone); }; subs.push(()=>un()); }
@@ -464,8 +497,9 @@ function reportMenu(uid){
 function notifyNew(cs){
   cs.forEach(c=>{ const n=c["unread_"+S.me.uid]||0, was=S.lastUnread[c.id]??n; S.lastUnread[c.id]=n;
     if(n>was && (document.hidden || S.peer!==peerOf(c))){
-      const u=S.users[peerOf(c)]; beep();
-      if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ new Notification(u?u.name:"Xapp",{body:c.last,tag:c.id}); }catch(e){} }
+      const u=isGroup(c.id)?{name:c.name}:S.users[peerOf(c)]; beep();
+      const body=isGroup(c.id)&&c.lastFrom?nameOf(c.lastFrom)+": "+c.last:c.last;
+      if(document.hidden && "Notification" in window && Notification.permission==="granted"){ try{ new Notification(u?u.name:"Xapp",{body,tag:c.id}); }catch(e){} }
     }});
 }
 
@@ -503,10 +537,13 @@ function renderList(force){
 
   const bgBanner = isNative()&&!api.demo&&S.bg&&!S.bg.signedIn ? `<button class="set" data-set="bgOn" style="background:color-mix(in srgb,var(--orange) 12%,transparent)"><span class="si" style="color:var(--orange)">${ico("phone")}</span><span class="st"><b>Turn on background calls</b><small>So calls ring when Xapp is closed</small></span></button>` : "";
   if(S.tab==="chats"){
-    const rows=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const u=S.users[peerOf(c)]||{uid:peerOf(c),name:"Contact"};
+    const rows=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const g=isGroup(c.id);
+      const u=g?{uid:c.id,name:c.name||"Group",group:true}:(S.users[peerOf(c)]||{uid:peerOf(c),name:"Contact"});
       if(q && !(u.name||"").toLowerCase().includes(q) && !(c.last||"").toLowerCase().includes(q)) return "";
       const n=c["unread_"+S.me.uid]||0;
-      const tick=c.lastFrom===S.me.uid?ico("checks"):"";
+      const tick=g?(c.lastFrom&&c.lastFrom!==S.me.uid&&!/^(created|added|removed|left|changed|made)/.test(c.last||"")?`<b style="font-weight:500">${esc(nameOf(c.lastFrom))}:</b> `:""):c.lastFrom===S.me.uid?ico("checks"):"";
+      if(g) return `<button class="row" data-open="${esc(c.id)}">${groupAvatar(c)}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
+        <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`;
       return `<button class="row" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
         <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`; }).join("");
     L.innerHTML = bgBanner + (rows || `<div class="empty">No chats yet.<br>Tap the orange button to message a colleague.</div>`);
@@ -697,7 +734,7 @@ function confirmClearCalls(){
 /* Public app: you only see people you added, plus anyone you have chatted or called with */
 function myContacts(){
   const me=S.users[S.me.uid]||S.me, ids=new Set(me.contacts||[]);
-  S.chats.forEach(c=>{ const p=peerOf(c); if(p) ids.add(p); });
+  S.chats.forEach(c=>{ if(isGroup(c.id)) return; const p=peerOf(c); if(p) ids.add(p); });
   S.calls.forEach(c=>ids.add(c.caller===S.me.uid?c.callee:c.caller));
   ids.delete(S.me.uid);
   return [...ids].map(id=>S.users[id]).filter(Boolean).sort((a,b)=>(a.name||"").localeCompare(b.name||""));
@@ -724,7 +761,7 @@ function openContacts(mode){
   sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${mode==="call"?"New call":"Select contact"}</b><div style="font-size:12.5px;color:var(--head-mute)">${list.length} contacts</div></div></header>
     <label class="search"><span>${ico("search")}</span><input id="cq" placeholder="Search name" aria-label="Search name"></label>
     <div class="list" id="clist"></div>`;
-  const draw=(q="")=>{ $("#clist").innerHTML = `<button class="row" data-addnew="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add contact</span></div><div class="sub"><span>By username or email</span></div></div></button>` + (list.filter(u=>(u.name||"").toLowerCase().includes(q)).map(u=>`<div class="row">
+  const draw=(q="")=>{ $("#clist").innerHTML = (mode==="call"?"":`<button class="row" data-newgroup="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("users")}</span><div class="mid"><div class="top"><span class="name">New group</span></div><div class="sub"><span>Chat with several people at once</span></div></div></button>`) + `<button class="row" data-addnew="1"><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add contact</span></div><div class="sub"><span>By username or email</span></div></div></button>` + (list.filter(u=>(u.name||"").toLowerCase().includes(q)).map(u=>`<div class="row">
       <button style="display:flex;gap:12px;align-items:center;flex:1;min-width:0;text-align:left" data-pick="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>${esc(u.about||"@"+(u.username||""))}</span></div></div></button>
       <button class="callbtn" data-c="${esc(u.uid)}" aria-label="Voice call">${ico("phone")}</button><button class="callbtn" data-v="${esc(u.uid)}" aria-label="Video call">${ico("video")}</button></div>`).join("")
       || `<div class="empty">No contacts yet. Tap Add contact above.</div>`); };
@@ -732,9 +769,66 @@ function openContacts(mode){
   $("#cq").oninput=e=>draw(e.target.value.toLowerCase());
   sh.onclick=e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
     if(e.target.closest("[data-addnew]")) return openAddContact();
+    if(e.target.closest("[data-newgroup]")) return openNewGroup();
     const p=e.target.closest("[data-pick]"); if(p){ sh.hidden=true; return openChat(p.dataset.pick); }
     const c=e.target.closest("[data-c]"); if(c){ sh.hidden=true; return startCall(c.dataset.c,false); }
     const v=e.target.closest("[data-v]"); if(v){ sh.hidden=true; return startCall(v.dataset.v,true); } };
+}
+
+/* =========================  GROUPS  ========================= */
+const UCOLORS=["#e8590c","#2f9e44","#1c7ed6","#ae3ec9","#d6336c","#0c8599","#f08c00","#5c7cfa"];
+function userColor(uid){ let h=0; for(const ch of String(uid)) h=(h*31+ch.charCodeAt(0))|0; return UCOLORS[Math.abs(h)%UCOLORS.length]; }
+function groupAvatar(g, cls=""){ const n=(g&&g.name||"G").trim(); return `<span class="av ${cls}" style="background:color-mix(in srgb,var(--orange) 22%,var(--panel));color:var(--orange)">${n?esc(n[0].toUpperCase()):ico("users")}</span>`; }
+/* pick people: used to create a group and to add members */
+function pickPeople(title, exclude, done, opts={}){
+  const sh=$("#sheet"), list=myContacts().filter(u=>!exclude.includes(u.uid)), sel=new Set();
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">${esc(title)}</b><div style="font-size:12.5px;color:var(--head-mute)" id="pickN">Select people</div></div></header>
+    ${opts.nameField?`<div class="form" style="padding-bottom:0"><label for="gName">Group name</label><input id="gName" maxlength="40" placeholder="e.g. Family" required></div>`:""}
+    <div class="list" id="plist">${list.map(u=>`<button class="row" data-sel="${esc(u.uid)}">${avatar(u)}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span></div><div class="sub"><span>@${esc(u.username||"")}</span></div></div><span class="pick" aria-hidden="true"></span></button>`).join("")||`<div class="empty">No contacts yet. Add contacts first.</div>`}</div>
+    <div style="padding:12px 16px calc(12px + env(safe-area-inset-bottom))"><button class="btn" id="pickGo" style="width:100%" disabled>${esc(opts.go||"Done")}</button></div>`;
+  sh.hidden=false;
+  const upd=()=>{ $("#pickN").textContent=sel.size?sel.size+" selected":"Select people"; $("#pickGo").disabled=!sel.size||(opts.nameField&&!$("#gName").value.trim()); };
+  if(opts.nameField) $("#gName").oninput=upd;
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
+    const r=e.target.closest("[data-sel]"); if(r){ const id=r.dataset.sel; sel.has(id)?sel.delete(id):sel.add(id); r.classList.toggle("on",sel.has(id)); upd(); return; }
+    if(e.target.closest("#pickGo")){ const b=$("#pickGo"); b.disabled=true; b.textContent="Please wait…";
+      try{ await done([...sel], opts.nameField?$("#gName").value.trim():""); sh.hidden=true; }catch(err){ toast("Couldn't save. Check your connection."); b.disabled=false; b.textContent=opts.go||"Done"; } } };
+}
+function openNewGroup(){ pickPeople("New group", [], async (ids, name)=>{ const gid=await api.createGroup(name, ids); toast("Group created"); setTimeout(()=>openChat(gid),300); }, {nameField:true, go:"Create group"}); }
+function openGroupInfo(gid){
+  const g=groupOf(gid); if(!g) return; const sh=$("#sheet"), me=S.me.uid, admin=(g.admins||[]).includes(me);
+  const mem=[...(g.members||[])].sort((a,b)=>(a===me?-1:b===me?1:nameOf(a).localeCompare(nameOf(b))));
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:17px">Group info</b></div></header>
+    <div class="list">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 16px 14px">${groupAvatar(g,"lg")}<b style="font-size:19px">${esc(g.name||"Group")}</b><small style="color:var(--mute)">Group · ${mem.length} members</small>
+        ${admin?`<button class="btn sec" data-rename style="padding:8px 14px">Change name</button>`:""}</div>
+      <div class="sec">${mem.length} members</div>
+      ${admin?`<button class="row" data-add><span class="av" style="background:var(--orange);color:var(--on-orange)">${ico("plus")}</span><div class="mid"><div class="top"><span class="name">Add members</span></div></div></button>`:""}
+      ${mem.map(id=>{ const u=S.users[id]||{uid:id,name:"Member"}; const isA=(g.admins||[]).includes(id);
+        return `<button class="row" data-m="${esc(id)}">${avatar(u)}<div class="mid"><div class="top"><span class="name">${id===me?"You":esc(u.name)}</span>${isA?`<span class="time" style="color:var(--orange)">Admin</span>`:""}</div><div class="sub"><span>${esc(u.about||"@"+(u.username||""))}</span></div></div></button>`; }).join("")}
+      <button class="row" data-leave style="color:#e5484d"><span class="av" style="background:transparent;color:#e5484d">${ico("back")}</span><div class="mid"><div class="top"><span class="name" style="color:#e5484d">Leave group</span></div></div></button>
+    </div>`;
+  sh.hidden=false;
+  sh.onclick=async e=>{ if(e.target.closest("[data-close]")) return sh.hidden=true;
+    if(e.target.closest("[data-rename]")){ const n=prompt("Group name", g.name||""); if(n&&n.trim()&&n.trim()!==g.name){ try{ await api.renameGroup(gid,n.trim().slice(0,40)); toast("Name changed"); sh.hidden=true; }catch(err){ toast("Only admins can do that"); } } return; }
+    if(e.target.closest("[data-add]")) return pickPeople("Add members", g.members||[], async ids=>{ await api.addToGroup(gid, ids); toast("Added"); }, {go:"Add"});
+    if(e.target.closest("[data-leave]")){ if(!confirm(`Leave "${g.name}"?`)) return; try{ await api.leaveGroup(gid); sh.hidden=true; closeChat(); toast("You left the group"); }catch(err){ toast("Couldn't leave. Check your connection."); } return; }
+    const m=e.target.closest("[data-m]"); if(m){ const id=m.dataset.m; if(id===me) return;
+      const acts=[["Message "+nameOf(id),"msg"]]; if(admin){ if(!(g.admins||[]).includes(id)) acts.push(["Make group admin","adm"]); acts.push(["Remove from group","rm"]); }
+      memberMenu(id, acts, async a=>{ try{
+        if(a==="msg"){ sh.hidden=true; openChat(id); }
+        if(a==="adm"){ await api.makeAdmin(gid,id); toast("Done"); openGroupInfo(gid); }
+        if(a==="rm"){ if(!confirm(`Remove ${nameOf(id)} from the group?`)) return; await api.removeFromGroup(gid,id); toast("Removed"); openGroupInfo(gid); }
+      }catch(err){ toast("Couldn't do that. Check your connection."); } }); } };
+}
+function memberMenu(uid, acts, cb){
+  const pop=$("#pop");
+  pop.innerHTML=`<div class="popbg" data-close></div><div class="popcard" role="dialog" aria-label="${esc(nameOf(uid))}"><div class="grip"></div>
+    <div class="msgprev">${esc(nameOf(uid))}</div><div class="acts">${acts.map(([l,k])=>`<button data-a="${k}" class="${k==="rm"?"del":""}">${ico(k==="rm"?"x":k==="adm"?"shield":"chat")}${esc(l)}</button>`).join("")}</div>
+    <div class="acts" style="padding-top:0"><button data-close style="justify-content:center;color:var(--mute)">Cancel</button></div></div>`;
+  pop.hidden=false; requestAnimationFrame(()=>pop.classList.add("open"));
+  const done=()=>{ pop.classList.remove("open"); setTimeout(()=>{ pop.hidden=true; pop.innerHTML=""; },180); };
+  pop.onclick=e=>{ if(e.target.closest("[data-close]")) return done(); const b=e.target.closest("[data-a]"); if(b){ done(); cb(b.dataset.a); } };
 }
 
 /* =========================  PROFILE  ========================= */
@@ -760,12 +854,17 @@ function openChat(uid){
   $("#nochat").hidden=true; ["#chatHead","#wall","#composerWrap"].forEach(s=>$(s).hidden=false);
   $("#chatPane").classList.add("open"); renderChatHead(); renderComposer();
   $("#wall").innerHTML=`<div class="loading">Loading messages…</div>`;
-  S.unsubMsgs=api.watchMessages(chatId(S.me.uid,uid), ms=>{ S.msgs=ms; renderMsgs(); if(!document.hidden) api.markRead(uid); });
+  S.unsubMsgs=api.watchMessages(isGroup(uid)?uid:chatId(S.me.uid,uid), ms=>{ S.msgs=ms; renderMsgs(); if(!document.hidden) api.markRead(uid); });
   api.markRead(uid);
 }
 function closeChat(){ $("#chatPane").classList.remove("open"); if(S.unsubMsgs) S.unsubMsgs(); S.unsubMsgs=null; S.peer=null;
   if(innerWidth>=900){ $("#nochat").hidden=false; ["#chatHead","#wall","#composerWrap"].forEach(s=>$(s).hidden=true); } }
 function renderChatHead(){
+  if(isGroup(S.peer)){ const g=groupOf(S.peer)||{name:"Group",members:[]};
+    const names=(g.members||[]).map(id=>id===S.me.uid?"You":(S.users[id]||{}).name).filter(Boolean);
+    $("#chatHead").innerHTML=`<button class="ibtn back" id="cBack" aria-label="Back">${ico("back")}</button><button class="who" id="gInfo" style="text-align:left">${groupAvatar(g,"sm")}<div style="min-width:0"><b>${esc(g.name||"Group")}</b><small>${esc(names.join(", "))}</small></div></button>
+      <button class="ibtn" id="cMore" aria-label="Group info">${ico("more")}</button>`;
+    $("#cBack").onclick=closeChat; $("#gInfo").onclick=$("#cMore").onclick=()=>openGroupInfo(S.peer); return; }
   const u=S.users[S.peer]||{uid:S.peer,name:"Contact"};
   const sub = S.typing===S.peer ? `<small class="typing">typing…</small>` : `<small>${isOnline(u)?"online":u.lastSeen?"last seen "+(dayLabel(u.lastSeen)==="Today"?"today at ":dayLabel(u.lastSeen)+" at ")+hm(u.lastSeen):esc(u.about||"")}</small>`;
   $("#chatHead").innerHTML=`<button class="ibtn back" id="cBack" aria-label="Back">${ico("back")}</button><div class="who">${avatar(u,"sm")}<div style="min-width:0"><b>${esc(u.name)}</b>${sub}</div></div>
@@ -775,10 +874,13 @@ function renderChatHead(){
 }
 function renderMsgs(){
   const W=$("#wall"), atBottom=W.scrollHeight-W.scrollTop-W.clientHeight<120; let html="", lastDay="", lastFrom="";
-  if(!S.msgs.length) html=`<div class="day">Messages and calls are private to the two of you</div>`;
+  const grp=isGroup(S.peer);
+  if(!S.msgs.length) html=`<div class="day">${grp?"Messages are private to the members of this group":"Messages and calls are private to the two of you"}</div>`;
   S.msgs.filter(m=>!(m.hiddenFor||[]).includes(S.me.uid)).forEach(m=>{ const d=dayLabel(m.at); if(d!==lastDay){ html+=`<div class="day">${d}</div>`; lastDay=d; lastFrom=""; }
+    if(m.type==="system"){ html+=`<div class="day sys">${esc(nameOf(m.from))} ${esc(m.text)}</div>`; lastFrom=""; return; }
     const mine=m.from===S.me.uid, first=m.from!==lastFrom; lastFrom=m.from;
-    const meta=`<span class="meta">${hm(m.at)}${mine?`<span class="${m.read?"read":""}">${ico(m.read?"checks":"check")}</span>`:""}</span>`;
+    const who = grp && !mine && first ? `<div class="who" style="color:${userColor(m.from)}">${esc(nameOf(m.from))}</div>` : "";
+    const meta=`<span class="meta">${hm(m.at)}${mine&&!grp?`<span class="${m.read?"read":""}">${ico(m.read?"checks":"check")}</span>`:""}</span>`;
     let body="";
     const cachedSrc = m.mediaId && S.mediaCache.has(m.mediaId) ? ` src="${S.mediaCache.get(m.mediaId)}"` : "";
     if(m.type==="deleted") body=`<span class="gone">${ico("x")}${mine?"You deleted this message":"This message was deleted"}</span>`;
@@ -787,7 +889,7 @@ function renderMsgs(){
     else if(m.type==="location") body=locationBubble(m);
     else if(m.type==="audio") body=`<div class="audio" data-audio="${esc(m.mediaId)}"><button class="play" aria-label="Play voice message">${ico("play")}</button><div class="track"><i></i></div><small>${dur(m.dur||0)}</small></div>`;
     else body=esc(m.text).replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank" rel="noopener" style="color:var(--orange-2)">$1</a>');
-    html+=`<div class="msg ${mine?"me":""} ${first?"first":""}${m.type==="deleted"?" del":""}" data-mid="${esc(m.id)}">${body}${meta}</div>`; });
+    html+=`<div class="msg ${mine?"me":""} ${first?"first":""}${m.type==="deleted"?" del":""}" data-mid="${esc(m.id)}">${who}${body}${meta}</div>`; });
   W.innerHTML=html;
   W.querySelectorAll("[data-media]:not([src])").forEach(async el=>{ try{ el.src=await media(el.dataset.media); }catch(e){ el.alt="Media unavailable"; } });
   if(atBottom||W.dataset.peer!==S.peer){ W.scrollTop=W.scrollHeight; W.dataset.peer=S.peer; }

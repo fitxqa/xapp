@@ -22,7 +22,7 @@ public class XappMessagingService extends FirebaseMessagingService {
         try {
             if ("call".equals(type)) NativeWatcher.onPushCall(getApplicationContext(), d.get("id"), d.get("from"), d.get("name"), "1".equals(d.get("video")));
             else if ("cancel".equals(type)) NativeWatcher.onPushCancel(getApplicationContext(), d.get("id"));
-            else if ("msg".equals(type)) NativeWatcher.onPushMessage(getApplicationContext(), d.get("chat"), d.get("from"), d.get("name"), d.get("text"));
+            else if ("msg".equals(type)) NativeWatcher.onPushMessage(getApplicationContext(), d.get("chat"), d.get("from"), d.get("name"), d.get("text"), d.get("title"));
         } catch (Exception ignored) {}
     }
 }

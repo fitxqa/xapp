@@ -88,7 +88,8 @@ final class NativeWatcher {
                     if (from.equals(uid) || MainActivity.inForeground) continue;
                     if (!prefs(app).getBoolean("msgNotif", true)) continue;
                     final String text = str(c.get("last"), "New message"), chatId = c.getId();
-                    withName(fs, from, name -> CallNotifications.showMessage(app, chatId, name, text));
+                    final boolean grp = chatId.startsWith("grp_"); final String gname = str(c.get("name"), "Group");
+                    withName(fs, from, name -> CallNotifications.showMessage(app, chatId, grp ? gname : name, grp ? name + ": " + text : text));
                 }
                 firstChats = false;
             });
@@ -264,9 +265,11 @@ final class NativeWatcher {
         if (r != null && !MainActivity.inForeground) CallNotifications.showMissed(app, id, r[0], "1".equals(r[1]));
     }
 
-    static void onPushMessage(Context ctx, String chatId, String from, String name, String text) {
+    static void onPushMessage(Context ctx, String chatId, String from, String name, String text, String title) {
         Context app = ctx.getApplicationContext();
         if (MainActivity.inForeground || !prefs(app).getBoolean("msgNotif", true) || chatId == null) return;
-        CallNotifications.showMessage(app, chatId, name != null && !name.isEmpty() ? name : "Xapp", text != null ? text : "New message");
+        String who = name != null && !name.isEmpty() ? name : "Xapp", body = text != null ? text : "New message";
+        if (title != null && !title.isEmpty()) CallNotifications.showMessage(app, chatId, title, who + ": " + body);   // group
+        else CallNotifications.showMessage(app, chatId, who, body);
     }
 }
