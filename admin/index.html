@@ -244,11 +244,13 @@ function users(v){
     <div class="list">${list.map(u=>{ const r=ringReady(u);
       return `<div class="row">${av(u)}<div class="mid"><b>${esc(u.name||"No name")}${u.blocked&&!u.deleted?'<span class="tag bad">Blocked</span>':""}${u.deleted?'<span class="tag">Deleted</span>':""}</b>
         <small>@${esc(u.username||"")}${u.email?" · "+esc(u.email):""}</small>
+        <small>ID: <code style="font-size:11.5px">${esc(u.uid)}</code> <button class="btn sec sm" data-copy="${esc(u.uid)}" style="padding:1px 7px;font-size:11.5px">Copy</button></small>
         <small><span class="dot ${online(u)?"on":""}"></span>${online(u)?"Online":"Last seen "+when(u.lastSeen)} · ${esc((u.diagBg&&u.diagBg.device)||"device unknown")}${r===null?"":r?' <span class="tag ok">Ring ready</span>':' <span class="tag warn">Ring setup</span>'}</small></div>
         <div class="acts">${u.deleted?"":u.blocked?`<button class="btn sec sm" data-unblock="${esc(u.uid)}">Unblock</button>`:`<button class="btn sec sm" data-block="${esc(u.uid)}">Block</button>`}
           ${u.deleted?"":`<button class="btn danger sm" data-del="${esc(u.uid)}">Delete</button>`}</div></div>`; }).join("") || `<div class="empty">No users</div>`}</div>`;
   $("#q").oninput=e=>{ D.q=e.target.value; const p=e.target.selectionStart; users(v); const n=$("#q"); n.focus(); n.setSelectionRange(p,p); };
   v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; users(v); });
+  v.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{ const t=b.dataset.copy; (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("User ID copied")).catch(()=>prompt("User ID",t)); });
   bindUserActions(v, ()=>users(v));
 }
 function bindUserActions(v, redraw){
