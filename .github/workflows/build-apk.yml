@@ -3,7 +3,7 @@ name: Build Xapp APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['scripts/turn_check.py', '.github/workflows/turn-check.yml', 'scripts/diag_read.py', '.github/workflows/diag-read.yml', 'diag/**', '.github/workflows/admin-pages.yml', 'firestore.rules']
+    paths-ignore: ['scripts/turn_check.py', '.github/workflows/turn-check.yml', 'scripts/diag_read.py', '.github/workflows/diag-read.yml', 'diag/**', '.github/workflows/admin-pages.yml', 'firestore.rules', '.github/workflows/emu-test.yml', 'scripts/emu_test.sh']
   workflow_dispatch:
 
 permissions:

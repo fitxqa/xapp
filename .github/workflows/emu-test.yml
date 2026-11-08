@@ -1,0 +1,89 @@
+name: Emulator test (Xapp on a virtual Android phone)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  emu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install
+        run: npm ci
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Relay (TURN) servers from secrets
+        env:
+          TU: ${{ secrets.XAPP_TURN_USER }}
+          TP: ${{ secrets.XAPP_TURN_PASS }}
+          MU: ${{ secrets.XAPP_METERED_USER }}
+          MP: ${{ secrets.XAPP_METERED_PASS }}
+          CW: ${{ secrets.XAPP_CF_WORKER }}
+          CK: ${{ secrets.XAPP_CF_KEY }}
+        run: |
+          node -e '
+            const fs=require("fs"), e=process.env, t=[];
+            if(e.MU&&e.MP){ const h="global.relay.metered.ca";   // ports 80/443 + TLS: gets through networks that block calling apps
+              t.push({urls:["turn:"+h+":80","turn:"+h+":80?transport=tcp","turn:"+h+":443","turns:"+h+":443?transport=tcp"],username:e.MU,credential:e.MP}); }
+            if(e.TU&&e.TP){ const s="free.expressturn.com:3478";
+              t.push({urls:["turn:"+s,"turn:"+s+"?transport=tcp"],username:e.TU,credential:e.TP}); }
+            if(t.length) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.turn = "+JSON.stringify(t)+";\n");
+            if(e.CW) fs.appendFileSync("www/config.js","\nwindow.XAPP_CONFIG.cfWorker = "+JSON.stringify({url:(/^https?:/.test(e.CW.trim())?"":"https://")+e.CW.trim(),key:(e.CK||"").trim()})+";\n");
+            console.log(e.CW ? "Cloudflare relay (Doha) added" : "::warning::XAPP_CF_WORKER secret missing — Cloudflare relay not used");
+            console.log("Relay servers added: "+t.length+(e.MU?" (Metered)":"")+(e.TU?" (ExpressTURN)":""));
+            if(!t.length) console.log("::warning::No relay secrets — calls on mobile data may not connect.");'
+
+      - name: Create Android project + Xapp icon
+        run: |
+          npx cap add android
+          npx -y @capacitor/assets@3.0.5 generate --android \
+            --iconBackgroundColor '#ff6a13' --iconBackgroundColorDark '#ff6a13' \
+            --splashBackgroundColor '#ffffff' --splashBackgroundColorDark '#0b0b0c'
+          cp native/*.java android/app/src/main/java/qa/fitx/xapp/
+
+      - name: Permissions, background service, Firebase, version, signing
+        run: python3 scripts/patch_android.py
+
+      - name: Build test APK (debug)
+        run: |
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon -q
+          cp app/build/outputs/apk/debug/app-debug.apk ../xapp-debug.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+
+      - name: Run on emulator (Android 14, Google services)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash scripts/emu_test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-results
+          path: emu/
