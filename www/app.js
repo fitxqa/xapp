@@ -243,7 +243,7 @@ function makeFire(){
       const early = []; let ready = false; const addC = queueIce(pc, sess);
       pc.onicecandidate = e => { if(!e.candidate){ sess.log("gather-done"); return; } sess.logCand(e.candidate); const c=e.candidate.toJSON(); ready ? offC.add(c) : early.push(c); };
       const offer = await pc.createOffer(); offer.sdp=tuneSdp(offer.sdp); await pc.setLocalDescription(offer);
-      await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now()});
+      await ref.set({caller:me, callee:peer, video, status:"ringing", offer:{type:offer.type,sdp:offer.sdp}, createdAt:Date.now(), relay:sess.relay||"auto"});
       this.push("call",{id:ref.id, to:peer, video:!!video});
       ready = true; early.splice(0).forEach(c=>offC.add(c));
       sess.unsubs.push(ref.onSnapshot(s=>{ const d=s.data(); if(!d) return;
@@ -668,6 +668,9 @@ function openSettingsPage(page){
   if(page==="calls") body=`<div class="wsec">Calls</div>
       ${srow("speakerVoice","speaker","Voice calls on speaker",{right:sw("speakerVoice")})}
       ${srow("net","wifi","Test connection",{sub:"Checks the relay servers for clear calls"})}
+      <div class="wsec">Relay for calls</div>
+      ${Object.entries(RELAYS).map(([k,l])=>`<button class="wset" data-set="relay:${k}" role="radio" aria-checked="${(PREFS.relay||"auto")===k}"><span class="wradio ${(PREFS.relay||"auto")===k?"on":""}"></span><span class="wt"><b>${l}</b>${k==="auto"?"<small>Recommended</small>":""}</span></button>`).join("")}
+      <div class="wnote">The person you call uses your choice too. To compare, call once with each relay and tap the signal bars during the call to see the delay.</div>
       ${isNative()&&!api.demo?bgSection():""}`;
   if(page==="help") body=`<div class="about" style="margin:14px 16px"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
       <div class="wsec">Help</div>
@@ -698,6 +701,7 @@ $("#list").onclick=e=>{
 };
 function settingAction(st){ { const a=st.dataset.set;
     if(a==="noop") return;
+    if(a.startsWith("relay:")){ PREFS.relay=a.slice(6); savePrefs(); toast("Relay: "+RELAYS[PREFS.relay]); if(S.setPage) openSettingsPage(S.setPage); return; }
     if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme().then(()=>{ renderList(true); if(S.setPage) openSettingsPage(S.setPage); if(S.peer) renderChatHead(); }); return; }
     if(a==="profile") return openProfile();
     if(a==="admin"){ location.href="admin.html"; return; }
@@ -1364,6 +1368,7 @@ function renderNetInfo(sess){
   const good=(v,a,b)=>v<=a?"ok":v<=b?"mid":"bad";
   p.innerHTML=`<b>Call quality</b>
     <div><span>Route</span><em>${esc(st.route)}${st.proto?" · "+esc(st.proto):""}</em></div>
+    <div><span>Relay setting</span><em>${esc((RELAYS[sess.relay||"auto"]||"Auto").replace(/ \(.*\)/,""))}</em></div>
     <div><span>Delay</span><em class="${good(st.rtt,150,350)}">${st.rtt} ms</em></div>
     <div><span>Packet loss</span><em class="${good(st.loss,2,8)}">${st.loss}%</em></div>
     <div><span>Jitter</span><em class="${good(st.jitter,30,60)}">${st.jitter} ms</em></div>
@@ -1435,10 +1440,14 @@ async function cfIce(){
     return ice;
   }catch(e){ return []; }
 }
-function iceWith(cf){   // order = preference: Cloudflare first, then ExpressTURN, then Metered
-  const t=CFG.turn||[], isExp=x=>[].concat(x.urls).some(u=>/expressturn/.test(u));
+/* Relay choice (Settings → Calls → Relay). Both phones use the caller's choice, so a call never hops between two relays. */
+const RELAYS={auto:"Auto (best available)", cloudflare:"Cloudflare", express:"ExpressTURN", metered:"Metered"};
+function iceWith(cf, choice){   // auto order = Cloudflare, then ExpressTURN, then Metered
+  const t=CFG.turn||[], isExp=x=>[].concat(x.urls).some(u=>/expressturn/.test(u)), isMet=x=>[].concat(x.urls).some(u=>/metered/.test(u));
   const stun=ICE.iceServers.filter(x=>!x.username);
-  return {...ICE, iceServers:[...cf, ...t.filter(isExp), ...t.filter(x=>!isExp(x)), ...stun]}; }
+  const pick = choice==="cloudflare"&&cf.length ? cf : choice==="express"&&t.some(isExp) ? t.filter(isExp) : choice==="metered"&&t.some(isMet) ? t.filter(isMet)
+    : [...cf, ...t.filter(isExp), ...t.filter(x=>!isExp(x))];
+  return {...ICE, iceServers:[...pick, ...stun]}; }
 async function prepare(sess){
   let mediaErr=null;
   try{ sess.local=await getMedia(sess.video); sess.log("media ok "+sess.local.getTracks().map(t=>t.kind).join("+")); }
@@ -1446,7 +1455,8 @@ async function prepare(sess){
   if(!sess.local){ sess.log("no media"); sess.saveDiag("no-media"); micHelp(mediaErr); return false; }
   if(!api.demo){
     const cf=await cfIce(); sess.diag.cf=cf.length>0;
-    const pc=new RTCPeerConnection({...iceWith(cf), iceCandidatePoolSize:2}); sess.pc=pc;
+    sess.relay = sess.outgoing ? (PREFS.relay||"auto") : ((sess.inc&&sess.inc.relay)||"auto"); sess.diag.relay=sess.relay;
+    const pc=new RTCPeerConnection({...iceWith(cf, sess.relay), iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
     tuneSenders(pc, sess.video);
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
