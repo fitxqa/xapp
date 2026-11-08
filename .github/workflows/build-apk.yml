@@ -97,6 +97,8 @@ jobs:
         run: |
           chmod +x gradlew
           set -o pipefail
+          sed -i 's/^networkTimeout=.*/networkTimeout=120000/' gradle/wrapper/gradle-wrapper.properties || true
+          for i in 1 2 3; do ./gradlew --version >/dev/null 2>&1 && break; echo "Gradle download attempt $i failed, retrying"; sleep 20; done   # services.gradle.org can be slow
           T=assembleRelease; [ "$MODE" = debug ] && T=assembleDebug
           if ! ./gradlew $T --no-daemon 2>&1 | tee build.log; then
             grep -E "error:|What went wrong|e: |FAILURE|Could not" -A3 build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
