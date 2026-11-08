@@ -1,5 +1,5 @@
 /**
- * Xapp Cloudflare Worker (version 6: groups, password-free background calls)
+ * Xapp Cloudflare Worker (version 7: groups, password-free background calls, push fix)
  *  1. Relay: fresh Cloudflare TURN login details (12 hours) so calls use the nearest data centre (Doha).
  *  2. Google push: wakes the other phone for calls and messages (like WhatsApp), so Xapp needs no always-on connection.
  *
@@ -15,7 +15,7 @@ const MY_FIREBASE_KEY = String.raw`PASTE_THE_WHOLE_KEY_FILE_HERE`;
 // ===================================================================================================================
 
 const FIREBASE_WEB_API_KEY = "AIzaSyAfvocJ8xYish8hfItCh9MwHue8-cFsHJA";   // Xapp's public web key (same as in the app)
-const VERSION = 6;
+const VERSION = 7;
 
 export default {
   async fetch(request, env0) {
@@ -59,20 +59,21 @@ export default {
 /* ---------------- Google push ---------------- */
 async function notify(b, sa) {
   const type = String(b.type || ""), to = String(b.to || "");
-  if (!["call", "cancel", "msg", "test", "gcall", "gcancel", "signin"].includes(type) || !to) return { ok: false, error: "bad request" };
+  if (!["call", "cancel", "msg", "test", "gcall", "gcancel", "signin", "ping"].includes(type) || !to) return { ok: false, error: "bad request" };
   const uid = await whoIs(b.idToken);                         // the signed-in Xapp user sending this
   if (!uid) return { ok: false, error: "not signed in" };
   if (type === "signin") return { ok: true, token: await customToken(sa, uid) };   // background calls on the same phone, no password
+  // NOTE: "from" is reserved by Google push, so the sender is called "sender"
   const token = await googleToken(sa);
   const doc = p => fsGet(sa, token, p);
 
-  let data = { type, from: uid }, targets = [to];
+  let data = { type, sender: uid }, targets = [to];
   if (type === "gcall" || type === "gcancel") {                // group call: ring every member except the caller
     const c = await doc(`calls/${b.id}`);
     if (!c || !c.group || c.caller !== uid || !Array.isArray(c.members) || !c.members.includes(uid)) return { ok: false, error: "not your group call" };
     if (type === "gcall" && c.status !== "ringing") return { ok: false, error: "call not ringing" };
     const g = c.chat ? await doc(`chats/${c.chat}?mask.fieldPaths=name`) : null;
-    data = { type: type === "gcall" ? "call" : "cancel", from: uid, id: String(b.id), video: c.video ? "1" : "0", group: "1", title: (g && g.name) || "Group call" };
+    data = { type: type === "gcall" ? "call" : "cancel", sender: uid, id: String(b.id), video: c.video ? "1" : "0", group: "1", title: (g && g.name) || "Group call" };
     targets = c.members.filter(m => m !== uid);
   } else if (type === "msg" && String(b.chat || "").startsWith("grp_")) {   // group message: every member except the sender
     const g = await doc(`chats/${b.chat}?mask.fieldPaths=members&mask.fieldPaths=name`);
@@ -87,9 +88,12 @@ async function notify(b, sa) {
   } else if (type === "msg") {
     if (String(b.chat || "") !== [uid, to].sort().join("_")) return { ok: false, error: "not your chat" };
     data.chat = String(b.chat); data.text = String(b.text || "New message").slice(0, 200);
+  } else if (type === "ping") {                              // silent self-test: proves push reaches this phone
+    if (to !== uid) return { ok: false, error: "ping only to yourself" };
+    data = { type: "ping", sender: uid };
   } else if (type === "test") {
     if (to !== uid) return { ok: false, error: "test only to yourself" };
-    data = { type: "call", from: uid, id: "test", video: "0" };
+    data = { type: "call", sender: uid, id: "test", video: "0" };
   }
   const me = await doc(`users/${uid}?mask.fieldPaths=name&mask.fieldPaths=username`);
   data.name = type === "test" ? "Xapp test call" : ((me && (me.name || me.username)) || "Xapp");

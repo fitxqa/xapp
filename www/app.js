@@ -1175,6 +1175,8 @@ async function pushSetup(){
   let alwaysOn=false; try{ alwaysOn=localStorage.getItem("xappAlwaysOn")==="1"; }catch(e){}
   const [t, st] = await Promise.all([nat("Background","pushToken").catch(e=>({error:String(e)})), api.pushStatus()]);
   S.push={token:!!(t&&t.token), worker:!!(st&&st.push), err:(t&&t.error)||(st&&st.pushError)||(!st?"Worker not reachable":"")};
+  // prove it: a silent push to this phone must go through before Xapp drops its always-on connection
+  if(S.push.token && S.push.worker){ const r=await api.push("ping",{to:S.me.uid}); if(!r||!r.ok){ S.push.worker=false; S.push.err="push test failed: "+String((r&&r.error)||"no answer").slice(0,80); } }
   const on=S.push.token && S.push.worker && !alwaysOn;
   try{ await nat("Background","setPushMode",{on}); }catch(e){}
   S.push.on=on; bgRefresh();
@@ -1454,10 +1456,14 @@ async function cfIce(){
   }catch(e){ return []; }
 }
 /* Relay choice (Settings → Calls → Relay). Both phones use the caller's choice, so a call never hops between two relays. */
-const RELAYS={auto:"Auto (best available)", cloudflare:"Cloudflare", express:"ExpressTURN", metered:"Metered"};
+const RELAYS={auto:"Auto (best available)", cloudflare:"Cloudflare", "cloudflare-tls":"Cloudflare · secure 443", express:"ExpressTURN", metered:"Metered", "metered-tls":"Metered · secure 443"};
 function iceWith(cf, choice){   // auto order = Cloudflare, then ExpressTURN, then Metered
   const t=CFG.turn||[], isExp=x=>[].concat(x.urls).some(u=>/expressturn/.test(u)), isMet=x=>[].concat(x.urls).some(u=>/metered/.test(u));
   const stun=ICE.iceServers.filter(x=>!x.username);
+  // "secure 443": relay over TLS on port 443 only. Looks like normal HTTPS, so networks that drop call traffic (UDP) let it through.
+  const tls = list => list.map(x=>({...x, urls:[].concat(x.urls).filter(u=>/^turns:.*:443/.test(u)||/^turns:/.test(u))})).filter(x=>x.urls.length);
+  if(choice==="cloudflare-tls" && tls(cf).length) return {...ICE, iceServers:tls(cf), iceTransportPolicy:"relay"};
+  if(choice==="metered-tls" && tls(t.filter(isMet)).length) return {...ICE, iceServers:tls(t.filter(isMet)), iceTransportPolicy:"relay"};
   const pick = choice==="cloudflare"&&cf.length ? cf : choice==="express"&&t.some(isExp) ? t.filter(isExp) : choice==="metered"&&t.some(isMet) ? t.filter(isMet)
     : [...cf, ...t.filter(isExp), ...t.filter(x=>!isExp(x))];
   return {...ICE, iceServers:[...pick, ...stun]}; }
