@@ -284,7 +284,7 @@ function calls(v){
       return `<div class="row"><div class="mid"><b>${esc(a.name)} → ${esc(b.name)} ${c.video?'<span class="tag">Video</span>':'<span class="tag">Voice</span>'} ${st}</b>
         <small>${when(c.createdAt)}${c.ringingAt?" · rang":c.answeredAt?"":" · didn't reach the phone"}${c.relay&&c.relay!=="auto"?" · relay: "+esc(c.relay):""}</small>
         ${["push1","push2","push3","push4"].filter(k=>c[k]).length?`<div class="q">Wake-up signal: ${["push1","push2","push3","push4"].filter(k=>c[k]).map(k=>c[k]==="ok"?'<b style="color:var(--ok)">sent</b>':`<b style="color:var(--bad)">${esc(c[k])}</b>`).join(" → ")}</div>`:""}
-        ${qs.map(q=>`<div class="q">${esc(q.who)}: <b>${esc(shortRoute(q.route))}</b>${q.proto?" "+esc(q.proto):""} · delay <b>${q.rtt??"–"} ms</b> (max ${q.maxRtt??"–"}) · loss <b>${q.loss??"–"}%</b> · jitter ${q.jitter??"–"} ms</div>`).join("")}</div></div>`; }).join("") || `<div class="empty">No calls</div>`}</div>`;
+        ${qs.map(q=>`<div class="q">${esc(q.who)}: <b>${esc(shortRoute(q.route))}</b>${q.proto?" "+esc(q.proto):""}${q.codec?" · "+esc(q.codec):""} · delay <b>${q.rtt??"–"} ms</b> (max ${q.maxRtt??"–"}) · loss <b>${q.loss??"–"}%</b> · jitter ${q.jitter??"–"} ms</div>`).join("")}</div></div>`; }).join("") || `<div class="empty">No calls</div>`}</div>`;
   v.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{ D.f=b.dataset.f; calls(v); });
 }
 function qOf(c){ return Object.keys(c).filter(k=>k.startsWith("q_")&&c[k]).map(k=>({...c[k], who:U(k.slice(2)).name})); }

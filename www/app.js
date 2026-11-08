@@ -1297,7 +1297,7 @@ function newSession(peer, video, outgoing){
     const ph=!!(d.holdBy && d.holdBy!==S.me.uid); if(ph!==!!sess.peerHeld){ sess.peerHeld=ph; const p=$("#callSt"); if(p) p.textContent=callStatusText(sess); } };
   sess.close=(why)=>{ if(sess.closed) return; sess.log("close "+why);
     try{ const h=sess.qhist||[], avg=i=>h.length?Math.round(h.reduce((a,x)=>a+x[i],0)/h.length):null;
-      if(sess.id) api.saveCallQ(sess.id, {at:Date.now(), connected:!!sess.startedAt, route:sess.stats?sess.stats.route:"", proto:sess.stats?sess.stats.proto:"",
+      if(sess.id) api.saveCallQ(sess.id, {at:Date.now(), connected:!!sess.startedAt, route:sess.stats?sess.stats.route:"", proto:sess.stats?sess.stats.proto:"", codec:sess.stats?sess.stats.codec||"":"",
         rtt:avg(0), loss:avg(1), jitter:avg(2), maxRtt:h.length?Math.max(...h.map(x=>x[0])):null, secs:sess.startedAt?Math.round((Date.now()-sess.startedAt)/1000):0, video:!!sess.video, end:why||""}); }catch(e){} hideMini(); clearTimeout(sess.idleT); clearInterval(sess.qT); nat("Background","callState",{active:false}); const pcToClose=sess.pc; sess.pc=null; const keep={pc:pcToClose}; sess.closed=true; stopTone(); nat("AudioRoute","set",{active:false}); clearInterval(sess.tick); clearTimeout(sess.missT); clearTimeout(sess.giveUpT); clearTimeout(sess.demoT);
     sess.unsubs.forEach(f=>f&&f()); if(sess.local) sess.local.getTracks().forEach(t=>t.stop());
     sess.pc=keep.pc; sess.saveDiag(why).catch(()=>{}).finally(()=>{ try{ keep.pc&&keep.pc.close(); }catch(e){} });
@@ -1369,10 +1369,22 @@ function tuneSdp(sdp){
   if(re.test(sdp)) return sdp.replace(re,(all,params)=>{ const kv={}; params.split(";").forEach(x=>{ const [k,v]=x.split("="); if(k) kv[k.trim()]=(v||"").trim(); }); Object.assign(kv,want); return "a=fmtp:"+pt+" "+Object.entries(kv).map(([k,v])=>k+"="+v).join(";"); });
   return sdp.replace(m[0], m[0]+"\r\na=fmtp:"+pt+" "+Object.entries(want).map(([k,v])=>k+"="+v).join(";"));
 }
+/* Redundant audio (RED, RFC 2198): every voice packet also carries the previous one, so lost packets are filled in.
+   Keeps calls clear on networks that drop 10–30% of packets. Falls back to plain Opus if the phone doesn't support it. */
+function preferRed(pc, sess){
+  try{
+    const caps=RTCRtpSender.getCapabilities&&RTCRtpSender.getCapabilities("audio"); if(!caps) return;
+    const red=caps.codecs.filter(c=>/red/i.test(c.mimeType)), opus=caps.codecs.filter(c=>/opus/i.test(c.mimeType));
+    if(!red.length||!opus.length) return;
+    const rest=caps.codecs.filter(c=>!/red|opus/i.test(c.mimeType));
+    pc.getTransceivers().forEach(t=>{ if(t.sender&&t.sender.track&&t.sender.track.kind==="audio"&&t.setCodecPreferences) t.setCodecPreferences([...red,...opus,...rest]); });
+    sess.diag.red=true; sess.log("audio RED on");
+  }catch(e){ sess.log("red err "+(e&&e.message)); }
+}
 function tuneSenders(pc, video){
   pc.getSenders().forEach(snd=>{ if(!snd.track) return; try{
     const p=snd.getParameters(); if(!p.encodings||!p.encodings.length) p.encodings=[{}];
-    if(snd.track.kind==="audio"){ p.encodings[0].priority="high"; p.encodings[0].networkPriority="high"; p.encodings[0].maxBitrate=40000; }
+    if(snd.track.kind==="audio"){ p.encodings[0].priority="high"; p.encodings[0].networkPriority="high"; p.encodings[0].maxBitrate=80000; /* room for redundant audio */ }
     else { p.encodings[0].priority="low"; p.encodings[0].networkPriority="low"; p.encodings[0].maxBitrate=900000; p.degradationPreference="balanced"; }
     snd.setParameters(p).catch(()=>{});
   }catch(e){} });
@@ -1383,6 +1395,7 @@ function renderNetInfo(sess){
   const good=(v,a,b)=>v<=a?"ok":v<=b?"mid":"bad";
   p.innerHTML=`<b>Call quality</b>
     <div><span>Route</span><em>${esc(st.route)}${st.proto?" · "+esc(st.proto):""}</em></div>
+    <div><span>Voice codec</span><em>${esc(st.codec||"Opus")}</em></div>
     <div><span>Relay setting</span><em>${esc((RELAYS[sess.relay||"auto"]||"Auto").replace(/ \(.*\)/,""))}</em></div>
     <div><span>Delay</span><em class="${good(st.rtt,150,350)}">${st.rtt} ms</em></div>
     <div><span>Packet loss</span><em class="${good(st.loss,2,8)}">${st.loss}%</em></div>
@@ -1396,18 +1409,21 @@ function watchQuality(sess){
   const steps=[{br:900000,scale:1},{br:450000,scale:1.5},{br:200000,scale:2},{br:90000,scale:3},{br:0,scale:4}];
   sess.qT=setInterval(async()=>{
     const pc=sess.pc; if(!pc||sess.closed) return clearInterval(sess.qT);
-    let lost=0, got=0, rtt=0, jitter=0, inB=0, outB=0, pair=null; const cands={};
+    let lost=0, got=0, rtt=0, jitter=0, inB=0, outB=0, pair=null, codecId=""; const cands={}, codecs={};
     try{ (await pc.getStats()).forEach(r=>{
-      if(r.type==="inbound-rtp"&&r.kind==="audio"){ lost=r.packetsLost||0; got=r.packetsReceived||0; jitter=r.jitter||0; inB=r.bytesReceived||0; }
+      if(r.type==="inbound-rtp"&&r.kind==="audio"){ lost=r.packetsLost||0; got=r.packetsReceived||0; jitter=r.jitter||0; inB=r.bytesReceived||0; codecId=r.codecId; }
+      if(r.type==="codec") codecs[r.id]=r;
       if(r.type==="outbound-rtp"&&r.kind==="audio") outB=r.bytesSent||0;
       if(r.type==="local-candidate"||r.type==="remote-candidate") cands[r.id]=r;
       if(r.type==="candidate-pair"&&r.nominated&&r.state==="succeeded"){ rtt=r.currentRoundTripTime||0; pair=r; } }); }catch(e){ return; }
     const L=pair&&cands[pair.localCandidateId]||{}, Rm=pair&&cands[pair.remoteCandidateId]||{};
+    let codecName=""; try{ const snd=pc.getSenders().find(x=>x.track&&x.track.kind==="audio"); const c0=snd&&snd.getParameters().codecs&&snd.getParameters().codecs[0];
+      codecName = c0 ? (/red/i.test(c0.mimeType) ? "Opus + redundancy" : c0.mimeType.replace(/^audio\//,"")) : ((codecs[codecId]||{}).mimeType||"").replace(/^audio\//,""); }catch(e){}
     const relayed = L.candidateType==="relay"||Rm.candidateType==="relay";
     const relayUrl = (L.candidateType==="relay" ? (L.url||"") : "") || "";
     const now=Date.now(), dt=last&&last.t ? (now-last.t)/1000 : 0;
     sess.stats={ route: relayed ? "Relay"+(relayUrl?" · "+relayUrl.replace(/^turns?:/,"").replace(/\?.*/,""):" (other side)") : "Direct (phone to phone)",
-      proto:(L.relayProtocol||L.protocol||"").toUpperCase(), rtt:Math.round(rtt*1000), jitter:Math.round(jitter*1000),
+      proto:(L.relayProtocol||L.protocol||"").toUpperCase(), codec:codecName, rtt:Math.round(rtt*1000), jitter:Math.round(jitter*1000),
       inKbps: dt? Math.round((inB-(last.inB||0))*8/dt/1000):0, outKbps: dt? Math.round((outB-(last.outB||0))*8/dt/1000):0 };
     const hist=sess.qhist||(sess.qhist=[]); 
     let loss=0; if(last){ const dl=lost-last.lost, dg=got-last.got; loss=dl+dg>0?dl/(dl+dg):0; } last={lost,got,inB,outB,t:now};
@@ -1477,6 +1493,7 @@ async function prepare(sess){
     sess.relay = sess.outgoing ? (PREFS.relay||"auto") : ((sess.inc&&sess.inc.relay)||"auto"); sess.diag.relay=sess.relay;
     const pc=new RTCPeerConnection({...iceWith(cf, sess.relay), iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
+    preferRed(pc, sess);
     tuneSenders(pc, sess.video);
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
     pc.onicecandidateerror=e=>{ const k=e.errorCode+" "+(e.url||""); sess.diag.errs[k]=(sess.diag.errs[k]||0)+1; };
