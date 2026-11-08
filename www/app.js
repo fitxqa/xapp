@@ -31,6 +31,7 @@ const P = {
   updates:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
   settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
   bell:"M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0", wifi:"M5 12.6a11 11 0 0 1 14 0M8.5 16.1a6 6 0 0 1 7 0M12 20h.01M1.4 9a16 16 0 0 1 21.2 0",
+  mail:"M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5zM3.5 6.5 12 13l8.5-6.5",
   shield:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z", user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", info:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01"
 };
 const ico = (n, extra="") => `<svg class="i" viewBox="0 0 24 24" ${extra}><path d="${P[n]}"/></svg>`;
@@ -537,7 +538,9 @@ function renderList(force){
 
   const bgBanner = isNative()&&!api.demo&&S.bg&&!S.bg.signedIn ? `<button class="set" data-set="bgOn" style="background:color-mix(in srgb,var(--orange) 12%,transparent)"><span class="si" style="color:var(--orange)">${ico("phone")}</span><span class="st"><b>Turn on background calls</b><small>So calls ring when Xapp is closed</small></span></button>` : "";
   if(S.tab==="chats"){
-    const rows=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const g=isGroup(c.id);
+    const F=S.chatFilter||"all", unreadN=S.chats.filter(c=>(c["unread_"+S.me.uid]||0)>0).length, hasG=S.chats.some(c=>isGroup(c.id));
+    const chips=`<div class="fchips" role="tablist" aria-label="Filter chats">${[["all","All"],["unread","Unread"+(unreadN?" "+unreadN:"")],["groups","Groups"]].filter(([k])=>k!=="groups"||hasG).map(([k,l])=>`<button class="fchip" role="tab" aria-selected="${F===k}" data-filter="${k}">${l}</button>`).join("")}</div>`;
+    const rows=S.chats.filter(c=>c.lastAt).filter(c=>F==="unread"?(c["unread_"+S.me.uid]||0)>0:F==="groups"?isGroup(c.id):true).sort((a,b)=>b.lastAt-a.lastAt).map(c=>{ const g=isGroup(c.id);
       const u=g?{uid:c.id,name:c.name||"Group",group:true}:(S.users[peerOf(c)]||{uid:peerOf(c),name:"Contact"});
       if(q && !(u.name||"").toLowerCase().includes(q) && !(c.last||"").toLowerCase().includes(q)) return "";
       const n=c["unread_"+S.me.uid]||0;
@@ -546,7 +549,7 @@ function renderList(force){
         <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`;
       return `<button class="row" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
         <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`; }).join("");
-    L.innerHTML = bgBanner + (rows || `<div class="empty">No chats yet.<br>Tap the orange button to message a colleague.</div>`);
+    L.innerHTML = bgBanner + chips + (rows || `<div class="empty">${F==="unread"?"No unread chats":F==="groups"?"No groups yet.<br>Tap the orange button → New group.":"No chats yet.<br>Tap the orange button to start a chat."}</div>`);
   }
   if(S.tab==="updates"){
     const mine=S.statuses.filter(s=>s.uid===S.me.uid&&s.expiresAt>Date.now());
@@ -627,45 +630,75 @@ async function fillBgDiag(){
   ].filter(Boolean).join("<br>");
 }
 function renderSettings(L){
-  const u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
-  const swatch=(k,l,c)=>`<button class="tsw" role="radio" aria-checked="${PREFS.theme===k}" aria-label="${l}" title="${l}" data-set="theme:${k}"><span class="${c}"></span></button>`;
-  const themeName={system:"System",light:"Light",dark:"Dark",lite:"Lite"}[PREFS.theme]||"System";
-  L.innerHTML=`<div class="sp">
-    <div class="sg"><button class="me2" data-set="profile">${avatar(u,"",false)}<span style="flex:1;min-width:0"><b>${esc(u.name)}</b><small>@${esc(u.username||"")}${u.about?" · "+esc(u.about):""}</small></span><span class="chev" style="color:var(--mute)">${ico("chev")}</span></button></div>
-
-    <div class="sg-h">Appearance</div><div class="sg">
-      <div class="sr"><span class="bd">${ico("moon")}</span><span class="tx"><b>Theme</b><small>${themeName}</small></span>
-        <span class="sw-row" role="radiogroup" aria-label="Theme">${swatch("system","System","t-sys")}${swatch("lite","Lite","t-lite")}${swatch("light","Light","t-light")}${swatch("dark","Dark","t-dark")}</span></div>
-    </div>
-
-    <div class="sg-h">Calls</div><div class="sg">
-      ${srow("speakerVoice","speaker","Voice calls on speaker",{right:sw("speakerVoice")})}
-      ${srow("net","wifi","Test connection")}
-    </div>
-    ${isNative()&&!api.demo?bgSection():""}
-
-    <div class="sg-h">Notifications</div><div class="sg">
-      ${srow("sounds","bell","Message sounds",{right:sw("sounds")})}
-      ${"Notification" in window&&!isNative()?srow("alerts","bell","Pop-up alerts"):""}
-    </div>
-
-    <div class="sg-h">About</div><div class="sg">
-      <div class="about"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
-    </div>
-    <div class="sg-h">Account</div><div class="sg">
-      ${S.isAdmin?srow("admin","shield","Admin panel",{sub:"Users, calls, reports, announcements"}):""}
-      ${srow("contactsTab","users","Contacts",{val:String(myContacts().length)})}
-      ${srow("logout","logout","Sign out",{danger:true,right:""})}
-    </div>
+  const u=S.me, b=S.bg||{};
+  const bgOk=!isNative()||api.demo||(b.signedIn&&b.notifications&&b.batteryUnrestricted&&b.microphone!==false&&b.fullScreenAllowed!==false&&b.callPopup!==false);
+  const themeName={system:"System default",light:"Light",dark:"Dark",lite:"Lite"}[PREFS.theme]||"System default";
+  const row=(page,icon,title,sub,warn)=>`<button class="wset" data-page="${page}"><span class="wi">${ico(icon)}</span><span class="wt"><b>${title}</b>${sub?`<small class="${warn?"warn":""}">${sub}</small>`:""}</span>${warn?`<span class="wdot" aria-label="Needs attention"></span>`:""}</button>`;
+  L.innerHTML=`<div class="wsp">
+    <button class="wme" data-set="profile">${avatar(u,"",false)}<span class="wt"><b>${esc(u.name)}</b><small>${esc(u.about||"@"+(u.username||""))}</small></span><span class="wqr">${ico("chev")}</span></button>
+    ${row("account","user","Account","Username, sign out")}
+    ${row("chats","chat","Chats","Theme · "+themeName)}
+    ${row("notif","bell","Notifications","Message sounds"+(PREFS.sounds?" on":" off"))}
+    ${row("calls","phone","Calls", isNative()&&!api.demo ? (bgOk?"Ringing when closed is ready":"Ringing when closed needs setup") : "Speaker, connection test", !bgOk)}
+    ${row("contacts","users","Contacts", myContacts().length+" contacts")}
+    ${S.isAdmin?row("admin","shield","Admin panel","Users, calls, reports, announcements"):""}
+    ${row("help","info","Help","About Xapp, version")}
+    <div class="wfoot">from<br><b>Xapp</b><span>Founder Mohammed Razeem</span></div>
   </div>`;
-  fillBgDiag();
-  nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="v"+i.version; } });
+  if(S.setPage && !$("#sheet").hidden && $("#sheet").dataset.page===S.setPage) openSettingsPage(S.setPage);   // keep an open page up to date
+}
+/* one settings page (opens over the app like WhatsApp's sub-screens) */
+function openSettingsPage(page){
+  const sh=$("#sheet"), u=S.me, sw=k=>`<span class="switch ${PREFS[k]?"on":""}" role="switch" aria-checked="${!!PREFS[k]}"></span>`;
+  const radio=(k,l,sub)=>`<button class="wset" data-set="theme:${k}" role="radio" aria-checked="${PREFS.theme===k}"><span class="wradio ${PREFS.theme===k?"on":""}"></span><span class="wt"><b>${l}</b>${sub?`<small>${sub}</small>`:""}</span></button>`;
+  const T={account:"Account", chats:"Chats", notif:"Notifications", calls:"Calls", help:"Help"}[page]; if(!T) return;
+  let body="";
+  if(page==="account") body=`<div class="wsec">Your account</div>
+      ${srow("profile","user","Profile",{sub:esc(u.name)+" · @"+esc(u.username||"")})}
+      ${u.email&&!/@xapp\.local$/.test(u.email)?srow("noop","mail","Email",{sub:esc(u.email),right:""}):""}
+      ${S.isAdmin?srow("admin","shield","Admin panel",{sub:"Users, calls, reports, announcements"}):""}
+      <div class="wsec"></div>
+      ${srow("logout","logout","Sign out",{danger:true,right:""})}`;
+  if(page==="chats") body=`<div class="wsec">Theme</div>
+      ${radio("system","System default","Follows your phone")}${radio("light","Light")}${radio("dark","Dark")}${radio("lite","Lite","Light with black bars")}`;
+  if(page==="notif") body=`<div class="wsec">Messages</div>
+      ${srow("sounds","bell","Message sounds",{right:sw("sounds"), sub:"Sound and notification for new messages"})}
+      ${"Notification" in window&&!isNative()?srow("alerts","bell","Pop-up alerts",{sub:"Show alerts when this tab is in the background"}):""}
+      ${isNative()&&!api.demo?srow("bgNotif","bell","Phone notification settings",{sub:"Sounds, pop-ups and badges"}):""}`;
+  if(page==="calls") body=`<div class="wsec">Calls</div>
+      ${srow("speakerVoice","speaker","Voice calls on speaker",{right:sw("speakerVoice")})}
+      ${srow("net","wifi","Test connection",{sub:"Checks the relay servers for clear calls"})}
+      ${isNative()&&!api.demo?bgSection():""}`;
+  if(page==="help") body=`<div class="about" style="margin:14px 16px"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
+      <div class="wsec">Help</div>
+      ${srow("net","wifi","Call quality check",{sub:"Test the connection used for calls"})}
+      ${isNative()&&!api.demo?srow("calls2","phone","Calls not ringing?",{sub:"Check the ringing settings"}):""}`;
+  sh.dataset.page=page; S.setPage=page;
+  sh.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Back">${ico("back")}</button><div class="grow"><b style="font-size:18px">${T}</b></div></header><div class="list wpage">${body}</div>`;
+  sh.hidden=false;
+  sh.onclick=e=>{ if(e.target.closest("[data-close]")){ sh.hidden=true; S.setPage=null; delete sh.dataset.page; renderList(true); return; }
+    const st=e.target.closest("[data-set]"); if(st && st.dataset.set==="calls2") return openSettingsPage("calls");
+    if(st) settingAction(st); };
+  if(page==="calls") fillBgDiag();
+  if(page==="help") nat("App","getInfo").then(i=>{ if(i&&i.version){ const v=$("#appVer"); if(v) v.textContent="v"+i.version; } });
 }
 const APP_VERSION="1.0";
 $("#list").onclick=e=>{
+  const fl=e.target.closest("[data-filter]"); if(fl){ S.chatFilter=fl.dataset.filter; return renderList(true); }
   if(e.target.closest("[data-add]")) return openAddContact();
-  const st=e.target.closest("[data-set]"); if(st){ const a=st.dataset.set;
-    if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme().then(()=>{ renderList(true); if(S.peer) renderChatHead(); }); return; }
+  const pg=e.target.closest("[data-page]"); if(pg){ const k=pg.dataset.page;
+    if(k==="contacts") return setTab("contacts"); if(k==="admin"){ location.href="admin.html"; return; }
+    return openSettingsPage(k); }
+  const st=e.target.closest("[data-set]"); if(st) return settingAction(st);
+  const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
+  const c=e.target.closest("[data-call]"); if(c) return startCall(c.dataset.call, c.dataset.video==="1");
+  if(e.target.closest("[data-clearcalls]")) return confirmClearCalls();
+  const cr=e.target.closest("[data-callrow]"); if(cr) return callActions(cr.dataset.callrow);
+  const s=e.target.closest("[data-story]"); if(s){ if(s.dataset.mystatus && !s.dataset.story) return chooseStatus(); return openStory(s.dataset.story); }
+};
+function settingAction(st){ { const a=st.dataset.set;
+    if(a==="noop") return;
+    if(a.startsWith("theme:")){ PREFS.theme=a.slice(6); savePrefs(); applyTheme().then(()=>{ renderList(true); if(S.setPage) openSettingsPage(S.setPage); if(S.peer) renderChatHead(); }); return; }
     if(a==="profile") return openProfile();
     if(a==="admin"){ location.href="admin.html"; return; }
     if(a==="uid"){ (navigator.clipboard?navigator.clipboard.writeText(S.me.uid):Promise.reject()).then(()=>toast("User ID copied")).catch(()=>toast(S.me.uid)); return; }
@@ -689,12 +722,7 @@ $("#list").onclick=e=>{
     if(a==="contactsTab") return setTab("contacts");
     if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); if(a==="sounds") nat("Background","setMessageNotifications",{on:PREFS.sounds}); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
     return; }
-  const o=e.target.closest("[data-open]"); if(o) return openChat(o.dataset.open);
-  const c=e.target.closest("[data-call]"); if(c) return startCall(c.dataset.call, c.dataset.video==="1");
-  if(e.target.closest("[data-clearcalls]")) return confirmClearCalls();
-  const cr=e.target.closest("[data-callrow]"); if(cr) return callActions(cr.dataset.callrow);
-  const s=e.target.closest("[data-story]"); if(s){ if(s.dataset.mystatus && !s.dataset.story) return chooseStatus(); return openStory(s.dataset.story); }
-};
+}
 
 /* =========================  CALL HISTORY  ========================= */
 function callActions(id){
