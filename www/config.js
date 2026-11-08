@@ -10,7 +10,8 @@ window.XAPP_CONFIG = {
     projectId: "xapp-976e1",
     storageBucket: "xapp-976e1.firebasestorage.app",
     messagingSenderId: "390505325630",
-    appId: "1:390505325630:web:4740d5b7be8e7a62f45d6f"
+    appId: "1:390505325630:web:4740d5b7be8e7a62f45d6f",
+    androidAppId: "1:390505325630:android:46e3521446cd7a8af45d6f"   // used by the Android app for Google push
   },
   // Optional TURN relay so calls work between different mobile networks (4G/5G), e.g. a free ExpressTURN account:
   // turn: [{ urls: ["turn:SERVER:3478", "turn:SERVER:3478?transport=tcp"], username: "USER", credential: "PASSWORD" }]
