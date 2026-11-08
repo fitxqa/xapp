@@ -36,16 +36,37 @@ service cloud.firestore {
       allow read: if signed() && (request.auth.uid == uid || isAdmin());
       allow write: if signed() && request.auth.uid == uid;
     }
+    // chats: 2-person chats (id = the two user IDs) and groups (id starts with grp_)
+    function isGroupId(id) { return id.matches('grp_.*'); }
+    function inChat(chatId) {
+      return chatId.split('_').hasAny([request.auth.uid])
+        || (isGroupId(chatId) && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members);
+    }
     match /chats/{chatId} {
       allow read: if signed() && request.auth.uid in resource.data.members;
-      allow create, update: if signed() && request.auth.uid in request.resource.data.members
+      // 2-person chat
+      allow create, update: if signed() && !isGroupId(chatId) && request.auth.uid in request.resource.data.members
         && request.resource.data.members.size() == 2;
+      // new group: the creator is in it and is its admin
+      allow create: if signed() && isGroupId(chatId) && request.auth.uid in request.resource.data.members
+        && request.resource.data.members.size() >= 2 && request.resource.data.members.size() <= 256
+        && request.resource.data.admins == [request.auth.uid];
+      // group: members send messages (last message, unread counts); admins change name / members / admins; anyone may leave
+      allow update: if signed() && isGroupId(chatId) && request.auth.uid in resource.data.members && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['members', 'admins', 'name', 'type', 'createdBy'])
+        || request.auth.uid in resource.data.admins
+        || (request.resource.data.members.toSet() == resource.data.members.toSet().difference([request.auth.uid].toSet())
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'admins'])
+            && request.resource.data.admins.toSet().difference([request.auth.uid].toSet()) == resource.data.admins.toSet().difference([request.auth.uid].toSet()))
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['admins'])
+            && resource.data.admins.toSet() == [request.auth.uid].toSet()
+            && request.resource.data.admins.toSet().difference(resource.data.admins.toSet()).size() == 1)
+      );
       match /messages/{msgId} {
-        // private: only the two people in the chat (the admin can't read messages)
-        allow read: if signed() && chatId.split('_').hasAny([request.auth.uid]);
-        allow create: if allowed() && chatId.split('_').hasAny([request.auth.uid]);
+        allow read: if signed() && inChat(chatId);
+        allow create: if allowed() && inChat(chatId) && request.resource.data.from == request.auth.uid;
         // members may mark read or hide a message for themselves; only the sender may delete it for everyone
-        allow update: if signed() && chatId.split('_').hasAny([request.auth.uid])
+        allow update: if signed() && inChat(chatId)
           && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'hiddenFor'])
               || resource.data.from == request.auth.uid);
       }
