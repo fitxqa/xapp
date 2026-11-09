@@ -104,6 +104,7 @@ public class BackgroundPlugin extends Plugin {
         r.put("callPopup", pop);
         r.put("pushMode", NativeWatcher.pushMode(ctx));
         r.put("hasPushToken", NativeWatcher.prefs(ctx).getString("fcmToken", null) != null);
+        r.put("pushPingAt", NativeWatcher.prefs(ctx).getLong("pushPingAt", 0));
         call.resolve(r);
     }
 

@@ -238,6 +238,7 @@ final class NativeWatcher {
         if (id == null) return;
         final Context app = ctx.getApplicationContext(); appCtx = app;
         holdAwake(app, 45000);
+        start(app);   // first: starting the listener resets the ringing list, so do it before adding this call
         String nm = name != null && !name.isEmpty() ? name : (from != null ? cachedName(app, from) : null);
         if (nm == null) nm = "Incoming call";
         if (from != null && name != null) remember(app, from, name);
@@ -254,7 +255,6 @@ final class NativeWatcher {
                 }
             } catch (Exception ignored) {}
         }
-        start(app);   // the call listener sees when the call is answered elsewhere / cancelled / missed
         main.postDelayed(() -> { synchronized (NativeWatcher.class) { if (pushMode(app) && ringing.isEmpty() && !CallService.running) stop(); } }, 60000);
     }
 

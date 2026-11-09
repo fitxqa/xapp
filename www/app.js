@@ -135,6 +135,7 @@ function makeFire(){
         return await r.json().catch(()=>({ok:r.ok}));
       }catch(e){ return {ok:false, error:String(e&&e.message||e)}; }
     },
+    saveToken(tok){ if(!me||!tok) return Promise.resolve(); return C("tokens").doc(me).set({fcm:tok, at:Date.now(), platform:"android"}).catch(()=>{}); },
     async pushStatus(){ const w=CFG.cfWorker; if(!w||!w.url) return null;
       try{ const u=new URL(w.url); u.pathname="/status"; u.search=""; const r=await fetch(u.toString(),{headers:{"x-app-key":w.key||""}}); return await r.json(); }catch(e){ return null; } },
     async isAdmin(){ try{ return (await C("admins").doc(me).get()).exists; }catch(e){ return false; } },
@@ -333,7 +334,7 @@ function makeDemo(){
     async removeContact(uid){ const m=D.users.find(u=>u.uid===me); m.contacts=(m.contacts||[]).filter(x=>x!==uid); emitAll(); },
     logout(){ try{ localStorage.removeItem("xappDemoMe"); }catch(e){} location.reload(); },
     ping(){}, seenNow(){}, cleanProfile(){}, saveDiag(){}, wantUsers(){}, updateProfile(p){ Object.assign(D.users[0],p); try{ localStorage.setItem("xappDemoMe",JSON.stringify(D.users[0])); }catch(e){} emitAll(); return Promise.resolve(); },
-    report(){ return Promise.resolve(); }, createGroup(){ toast("Groups need an account"); return Promise.reject(); }, push(){ return Promise.resolve(null); }, pushStatus(){ return Promise.resolve(null); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
+    report(){ return Promise.resolve(); }, saveToken(){ return Promise.resolve(); }, createGroup(){ toast("Groups need an account"); return Promise.reject(); }, push(){ return Promise.resolve(null); }, pushStatus(){ return Promise.resolve(null); }, watchAnnouncements(){ return ()=>{}; }, saveCallQ(){}, bumpStat(){},
     watchUsers(cb){ return on("users",cb,get.users); }, watchChats(cb){ return on("chats",cb,get.chats); },
     watchMessages(cid,cb){ return on("m:"+cid,cb,()=>D.msgs[cid]||[]); },
     async send(peer,m){ const cid=chatId(me,peer); (D.msgs[cid]=D.msgs[cid]||[]).push({id:Math.random().toString(36).slice(2),...m,from:me,at:Date.now(),read:false});
@@ -1175,8 +1176,16 @@ async function pushSetup(){
   let alwaysOn=false; try{ alwaysOn=localStorage.getItem("xappAlwaysOn")==="1"; }catch(e){}
   const [t, st] = await Promise.all([nat("Background","pushToken").catch(e=>({error:String(e)})), api.pushStatus()]);
   S.push={token:!!(t&&t.token), worker:!!(st&&st.push), err:(t&&t.error)||(st&&st.pushError)||(!st?"Worker not reachable":"")};
-  // prove it: a silent push to this phone must go through before Xapp drops its always-on connection
-  if(S.push.token && S.push.worker){ const r=await api.push("ping",{to:S.me.uid}); if(!r||!r.ok){ S.push.worker=false; S.push.err="push test failed: "+String((r&&r.error)||"no answer").slice(0,80); } }
+  // save this phone's current push address from the app too (works even if the background login is off)
+  if(t&&t.token) await api.saveToken(t.token);
+  // prove it: a silent push must actually ARRIVE on this phone before Xapp drops its always-on connection
+  if(S.push.token && S.push.worker){
+    const before=((await nat("Background","status").catch(()=>({})))||{}).pushPingAt||0;
+    const r=await api.push("ping",{to:S.me.uid});
+    if(!r||!r.ok){ S.push.worker=false; S.push.err="push test failed: "+String((r&&r.error)||"no answer").slice(0,80); }
+    else { let got=false; for(let i=0;i<10&&!got;i++){ await new Promise(z=>setTimeout(z,1000)); const st2=await nat("Background","status").catch(()=>null); got=!!(st2&&st2.pushPingAt>before); }
+      if(!got){ S.push.worker=false; S.push.err="test push didn't arrive on this phone"; } }
+  }
   const on=S.push.token && S.push.worker && !alwaysOn;
   try{ await nat("Background","setPushMode",{on}); }catch(e){}
   S.push.on=on; bgRefresh();
