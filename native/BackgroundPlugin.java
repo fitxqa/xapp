@@ -371,4 +371,11 @@ public class BackgroundPlugin extends Plugin {
         else if (NativeWatcher.signedIn(ctx)) { CallService.start(ctx, false); WatchdogReceiver.schedule(ctx, 15 * 60 * 1000L); }
         JSObject r = new JSObject(); r.put("pushMode", on); call.resolve(r);
     }
+
+    /** A share from another app that arrived before the web app was listening. */
+    @PluginMethod
+    public void takeShare(PluginCall call) {
+        com.getcapacitor.JSObject sh = MainActivity.pendingShare; MainActivity.pendingShare = null;
+        call.resolve(sh != null ? sh : new com.getcapacitor.JSObject());
+    }
 }

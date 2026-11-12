@@ -31,6 +31,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         CallNotifications.ensureChannels(this);
         handleCallIntent(getIntent());
+        handleShareIntent(getIntent());
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 501);
         try { if (NativeWatcher.needService(this)) { CallService.start(this, false); WatchdogReceiver.schedule(this, 15 * 60 * 1000L); } } catch (Exception ignored) {}
@@ -58,7 +59,43 @@ public class MainActivity extends BridgeActivity {
         BackgroundPlugin.emit("pip", o);
     }
 
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); handleCallIntent(intent); }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); handleCallIntent(intent); handleShareIntent(intent); }
+
+    // ---- "Share to Xapp" from other apps (screenshots, photos, videos, text) ----
+    static volatile com.getcapacitor.JSObject pendingShare = null;
+    private void handleShareIntent(Intent intent) {
+        if (intent == null) return;
+        String act = intent.getAction();
+        if (!Intent.ACTION_SEND.equals(act) && !Intent.ACTION_SEND_MULTIPLE.equals(act)) return;
+        final Intent in = intent;
+        new Thread(() -> {
+            try {
+                java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+                if (Intent.ACTION_SEND_MULTIPLE.equals(act)) { java.util.ArrayList<Uri> l = in.getParcelableArrayListExtra(Intent.EXTRA_STREAM); if (l != null) uris.addAll(l); }
+                else { Uri u = in.getParcelableExtra(Intent.EXTRA_STREAM); if (u != null) uris.add(u); }
+                com.getcapacitor.JSArray files = new com.getcapacitor.JSArray();
+                java.io.File dir = new java.io.File(getCacheDir(), "shared"); dir.mkdirs();
+                int n = 0;
+                for (Uri u : uris) {
+                    if (n >= 10) break;
+                    String type = getContentResolver().getType(u); if (type == null) type = in.getType() != null ? in.getType() : "application/octet-stream";
+                    java.io.File f = new java.io.File(dir, "s" + System.currentTimeMillis() + "_" + (n++));
+                    try (java.io.InputStream is = getContentResolver().openInputStream(u); java.io.OutputStream os = new java.io.FileOutputStream(f)) {
+                        if (is == null) continue; byte[] buf = new byte[65536]; int r; while ((r = is.read(buf)) > 0) os.write(buf, 0, r);
+                    }
+                    com.getcapacitor.JSObject o = new com.getcapacitor.JSObject();
+                    o.put("url", getBridge().getLocalUrl() + "/_capacitor_file_" + f.getAbsolutePath()); o.put("type", type); o.put("size", f.length());
+                    files.put(o);
+                }
+                com.getcapacitor.JSObject sh = new com.getcapacitor.JSObject();
+                sh.put("files", files);
+                String text = in.getStringExtra(Intent.EXTRA_TEXT); if (text != null) sh.put("text", text);
+                pendingShare = sh;
+                runOnUiThread(() -> BackgroundPlugin.emit("share", sh));
+            } catch (Exception ignored) {}
+        }).start();
+        setIntent(new Intent(this, MainActivity.class));   // don't handle the same share twice
+    }
     @Override public void onResume() { super.onResume(); inForeground = true; CallNotifications.cancelIncoming(this); }
     @Override public void onPause() { super.onPause(); inForeground = false; }
 

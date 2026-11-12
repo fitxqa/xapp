@@ -460,7 +460,7 @@ api.onAuth(user=>{
   subs.push(api.watchAnnouncements(showAnnouncement));
   if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
-  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); setTimeout(pushSetup,2500); }
+  if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); setTimeout(()=>{ if(S.pendingShare){ const p=S.pendingShare; S.pendingShare=null; onShare(p); } else nat("Background","takeShare").then(onShare).catch(()=>{}); },800); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); setTimeout(pushSetup,2500); }
   cfIce();
   api.seenNow(); api.cleanProfile(); setActive(true);
 });
@@ -1003,6 +1003,31 @@ $("#attach").onclick=e=>{ e.stopPropagation(); const p=e.target.closest("[data-p
   ({gallery:"#fGallery",camera:"#fCamera",video:"#fVideo"})[p.dataset.pick] && $(({gallery:"#fGallery",camera:"#fCamera",video:"#fVideo"})[p.dataset.pick]).click(); };
 $("#fScan").onchange=e=>{ const f=e.target.files[0]; e.target.value=""; if(f&&S.peer) scanFile(f); };
 ["#fGallery","#fCamera","#fVideo"].forEach(s=>$(s).onchange=async e=>{ const f=e.target.files[0]; e.target.value=""; if(f&&S.peer) sendFile(S.peer,f); });
+/* ---- shared from another app (Android Share menu → Xapp) ---- */
+function onShare(sh){
+  if(!sh||!((sh.files&&sh.files.length)||sh.text)) return;
+  nat("Background","takeShare");   // clear the pending copy
+  if(!S.me){ S.pendingShare=sh; return; }
+  const sheet=$("#sheet"), q={v:""};
+  const what = sh.files&&sh.files.length ? (sh.files.length+" "+(sh.files.every(f=>/^image\//.test(f.type))?"photo":sh.files.every(f=>/^video\//.test(f.type))?"video":"file")+(sh.files.length>1?"s":"")) : "text";
+  const chats=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).map(c=>isGroup(c.id)?{id:c.id,name:c.name||"Group",group:true,c}:{id:peerOf(c),u:S.users[peerOf(c)]}).filter(x=>x.id&&(x.group||x.u));
+  const seen=new Set(chats.map(x=>x.id)); const others=myContacts().filter(u=>!seen.has(u.uid)).map(u=>({id:u.uid,u}));
+  const draw=()=>{ const f=q.v.toLowerCase(), m=x=>!f||((x.group?x.name:x.u.name)||"").toLowerCase().includes(f);
+    const row=x=>`<button class="row" data-to="${esc(x.id)}">${x.group?groupAvatar(x.c):avatar(x.u)}<div class="mid"><div class="top"><span class="name">${esc(x.group?x.name:x.u.name)}</span></div><div class="sub"><span>${x.group?"Group":"@"+esc(x.u.username||"")}</span></div></div></button>`;
+    $("#shList").innerHTML=(chats.filter(m).length?`<div class="sec">Recent chats</div>`+chats.filter(m).map(row).join(""):"")+(others.filter(m).length?`<div class="sec">Contacts</div>`+others.filter(m).map(row).join(""):"")||`<div class="empty">No chats yet</div>`; };
+  sheet.innerHTML=`<header class="bar"><button class="ibtn" data-close aria-label="Cancel">${ico("back")}</button><div class="grow"><b style="font-size:17px">Send to…</b><div style="font-size:12.5px;color:var(--head-mute)">Sharing ${esc(what)}</div></div></header>
+    <div style="padding:8px 14px"><input id="shQ" placeholder="Search" style="width:100%"></div><div class="list" id="shList"></div>`;
+  sheet.hidden=false; draw(); $("#shQ").oninput=e=>{ q.v=e.target.value; draw(); };
+  sheet.onclick=async e=>{ if(e.target.closest("[data-close]")){ sheet.hidden=true; return; }
+    const t=e.target.closest("[data-to]"); if(!t) return; const to=t.dataset.to; sheet.hidden=true; openChat(to);
+    for(const fi of (sh.files||[])){
+      if(!/^(image|video)\//.test(fi.type)){ toast("Only photos and videos can be shared"); continue; }
+      try{ const b=await (await fetch(fi.url)).blob(); await sendFile(to, new File([b], "shared", {type:fi.type||b.type})); }catch(err){ toast("Couldn't read the shared file"); }
+    }
+    if(sh.text){ if(sh.files&&sh.files.length) api.send(to,{type:"text",text:sh.text}).catch(()=>{}); else { const ta=$("#msgIn"); if(ta){ ta.value=sh.text; ta.oninput&&ta.oninput(); ta.focus(); } } }
+  };
+}
+natOn("Background","share", onShare);
 async function sendFile(peer,f){
   try{
     if(f.type.startsWith("image/")){ toast("Sending photo…"); const id=await api.putMedia(await shrinkImage(f)); await api.send(peer,{type:"image",mediaId:id}); }
