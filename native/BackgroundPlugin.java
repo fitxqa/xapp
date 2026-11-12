@@ -224,6 +224,8 @@ public class BackgroundPlugin extends Plugin {
         Long started = call.getLong("startedAt");
         CallService.callStartedAt = started == null ? 0 : started;
         CallService.callHeld = Boolean.TRUE.equals(call.getBoolean("held", false));
+        final boolean pip = active && CallService.callVideo && !CallService.callHeld;
+        if (getActivity() instanceof MainActivity) { final MainActivity ma = (MainActivity) getActivity(); ma.runOnUiThread(() -> ma.setVideoCall(pip)); }
         if (active || NativeWatcher.needService(getContext())) CallService.start(getContext(), active);
         else if (CallService.running) CallService.stop(getContext());   // push mode: no "Ready to receive calls" service after a call
         call.resolve();

@@ -36,6 +36,28 @@ public class MainActivity extends BridgeActivity {
         try { if (NativeWatcher.needService(this)) { CallService.start(this, false); WatchdogReceiver.schedule(this, 15 * 60 * 1000L); } } catch (Exception ignored) {}
     }
 
+    // ---- picture-in-picture during video calls (like WhatsApp): pressing Home keeps the video and camera running in a small window ----
+    static volatile boolean videoCall = false;
+    private android.app.PictureInPictureParams pipParams() {
+        android.app.PictureInPictureParams.Builder b = new android.app.PictureInPictureParams.Builder().setAspectRatio(new android.util.Rational(9, 16));
+        if (Build.VERSION.SDK_INT >= 31) b.setAutoEnterEnabled(videoCall).setSeamlessResizeEnabled(true);
+        return b.build();
+    }
+    /** called from the web app (via BackgroundPlugin.callState) when a video call starts / ends / is held */
+    void setVideoCall(boolean on) {
+        videoCall = on;
+        if (Build.VERSION.SDK_INT >= 26) { try { setPictureInPictureParams(pipParams()); } catch (Exception ignored) {} }
+    }
+    @Override public void onUserLeaveHint() {
+        super.onUserLeaveHint();
+        if (videoCall && Build.VERSION.SDK_INT >= 26 && Build.VERSION.SDK_INT < 31) { try { enterPictureInPictureMode(pipParams()); } catch (Exception ignored) {} }
+    }
+    @Override public void onPictureInPictureModeChanged(boolean inPip, android.content.res.Configuration cfg) {
+        super.onPictureInPictureModeChanged(inPip, cfg);
+        com.getcapacitor.JSObject o = new com.getcapacitor.JSObject(); o.put("pip", inPip);
+        BackgroundPlugin.emit("pip", o);
+    }
+
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); handleCallIntent(intent); }
     @Override public void onResume() { super.onResume(); inForeground = true; CallNotifications.cancelIncoming(this); }
     @Override public void onPause() { super.onPause(); inForeground = false; }

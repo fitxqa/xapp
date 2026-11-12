@@ -434,6 +434,10 @@ body.incall .shell,body.incall #chatPane{padding-top:calc(env(safe-area-inset-to
 .msg.first:not(.me)::before{left:-7px;background:var(--in);clip-path:polygon(100% 0,0 0,100% 100%)}
 .msg.first.me::before{right:-7px;background:var(--out);clip-path:polygon(0 0,100% 0,0 100%)}
 .wnote{color:var(--mute);font-size:13px;line-height:1.45;padding:6px 22px 4px}
+/* picture-in-picture window: just the video */
+body.pipmode #call .ctrls,body.pipmode #call .topb,body.pipmode #call .net,body.pipmode #call .netinfo,body.pipmode #call video.local,body.pipmode #pip,body.pipmode #callbar{display:none!important}
+body.pipmode #call{background:#000}
+body.pipmode #call video#rv{position:fixed;inset:0;width:100%;height:100%;object-fit:cover}
 </style>
 </head>
 <body>

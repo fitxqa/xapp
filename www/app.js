@@ -1345,7 +1345,13 @@ function makeDraggable(el, onTap){
 }
 /* minimise: back to chats while the call continues */
 function minimizeCall(){ if(!call||!call.startedAt) return; call.minimized=true; $("#call").hidden=true; showMini(call); }
-function restoreCall(){ if(!call) return; call.minimized=false; hideMini(); $("#call").hidden=false; attachRemote(call); wakeCall(); }
+function restoreCall(){ if(!call) return; call.minimized=false; hideMini(); $("#call").hidden=false; attachRemote(call); replayLocal(call); wakeCall(); }
+/* your own camera preview pauses while the call screen is hidden: start it again */
+function replayLocal(s){ const lv=$("#lv"); if(lv&&s&&s.local){ lv.srcObject=null; lv.srcObject=s.local; const pr=lv.play(); if(pr&&pr.catch) pr.catch(()=>{}); } }
+/* Android picture-in-picture (pressing Home in a video call): show only the other person's video in the small window */
+natOn("Background","pip",e=>{ const on=!!(e&&e.pip); document.body.classList.toggle("pipmode",on);
+  if(on && call && call.minimized) restoreCall();
+  if(call){ attachRemote(call); replayLocal(call); if(!on) wakeCall(); } });
 function showMini(s){
   hideMini(); const name=(S.users[s.peer]||{}).name||"Call";
   if(s.video){
