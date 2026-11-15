@@ -719,9 +719,17 @@ function settingAction(st){ { const a=st.dataset.set;
     if(a==="bgMic") return nat("Background","openAppInfo");
     if(a==="bgFull") return nat("Background","openFullScreenSettings");
     if(a==="bgPop") return nat("Background","openCallChannel");
-    if(a==="bgTest"){ toast("Press Home now. Xapp will ring in 8 seconds");
-      if(S.push&&S.push.on){ setTimeout(async()=>{ const r=await api.push("test",{to:S.me.uid}); if(!r||!r.ok){ nat("Background","testRing"); } },8000); return; }   // through Google push, like a real call
-      return nat("Background","testRing"); }
+    if(a==="bgTest"){
+      nat("Background","testRing");                                   // the ring itself: an Android alarm in 8 s
+      toast("Press Home now. Xapp will ring in 8 seconds");
+      if(S.push&&S.push.on) (async()=>{                              // and check that Google push reaches this phone
+        const before=((await nat("Background","status").catch(()=>({})))||{}).pushPingAt||0;
+        const r=await api.push("ping",{to:S.me.uid}); let got=false;
+        for(let i=0;i<6&&!got&&r&&r.ok;i++){ await new Promise(z=>setTimeout(z,700)); const st2=await nat("Background","status").catch(()=>null); got=!!(st2&&st2.pushPingAt>before); }
+        if(!document.hidden) toast(got?"Google push reaches this phone ✓":"Google push didn't arrive. Calls will use the always-on connection");
+        if(!got){ try{ await nat("Background","setPushMode",{on:false}); S.push.on=false; }catch(e){} }
+      })();
+      return; }
     if(a==="bgPush"){ if(!S.push||!S.push.token||!S.push.worker){ toast("Google push isn't available on this phone yet"); return pushSetup(); }
       const turnOn=!S.push.on; try{ localStorage.setItem("xappAlwaysOn", turnOn?"0":"1"); }catch(e){}
       toast(turnOn?"Battery saver ringing on":"Always-on connection on"); return pushSetup(); }

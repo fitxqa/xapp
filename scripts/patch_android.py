@@ -22,6 +22,7 @@ app_parts = '''
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="xapp_messages" />
         <receiver android:name=".HangupReceiver" android:exported="false" />
         <receiver android:name=".WatchdogReceiver" android:exported="false" />
+        <receiver android:name=".TestRingReceiver" android:exported="false" />
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

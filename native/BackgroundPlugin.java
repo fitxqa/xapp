@@ -342,10 +342,7 @@ public class BackgroundPlugin extends Plugin {
     /** Test: rings like a real incoming call 8 seconds later, so you can press Home and check it. */
     @PluginMethod
     public void testRing(PluginCall call) {
-        final Context ctx = getContext().getApplicationContext();
-        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-        h.postDelayed(() -> CallNotifications.showIncoming(ctx, "test", "Xapp test call", false), 8000);
-        h.postDelayed(() -> CallNotifications.cancelIncoming(ctx), 26000);
+        TestRingReceiver.schedule(getContext().getApplicationContext(), 8000);   // alarm: works even when Android freezes Xapp
         call.resolve();
     }
 
