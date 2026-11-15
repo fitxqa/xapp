@@ -381,7 +381,7 @@ function preview(m){
 
 /* =========================  STATE  ========================= */
 const api = DEMO ? makeDemo() : makeFire();
-const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", ...p}; })();
+const PREFS = (()=>{ let p={}; try{ p=JSON.parse(localStorage.getItem("xappPrefs")||"{}"); }catch(e){} return {sounds:true, speakerVoice:false, theme:"system", red:true, ...p}; })();
 async function applyTheme(){
   let dark;
   if(PREFS.theme==="aqua"){ PREFS.theme="system"; savePrefs(); }
@@ -672,6 +672,7 @@ function openSettingsPage(page){
       ${isNative()&&!api.demo?srow("bgNotif","bell","Phone notification settings",{sub:"Sounds, pop-ups and badges"}):""}`;
   if(page==="calls") body=`<div class="wsec">Calls</div>
       ${srow("speakerVoice","speaker","Voice calls on speaker",{right:sw("speakerVoice")})}
+      ${srow("red","speaker","Redundant audio",{right:sw("red"), sub:"Clearer sound when the network drops packets. Uses about 2× voice data"})}
       ${srow("net","wifi","Test connection",{sub:"Checks the relay servers for clear calls"})}
       <div class="wsec">Relay for calls</div>
       ${Object.entries(RELAYS).map(([k,l])=>`<button class="wset" data-set="relay:${k}" role="radio" aria-checked="${(PREFS.relay||"auto")===k}"><span class="wradio ${(PREFS.relay||"auto")===k?"on":""}"></span><span class="wt"><b>${l}</b>${k==="auto"?"<small>Recommended</small>":""}</span></button>`).join("")}
@@ -729,7 +730,7 @@ function settingAction(st){ { const a=st.dataset.set;
     if(a==="logout") return api.logout();
     if(a==="alerts"){ Notification.requestPermission().then(p=>toast(p==="granted"?"Pop-up alerts are on":"Alerts are blocked in browser settings")); return; }
     if(a==="contactsTab") return setTab("contacts");
-    if(a==="speakerVoice"||a==="sounds"){ PREFS[a]=!PREFS[a]; savePrefs(); if(a==="sounds") nat("Background","setMessageNotifications",{on:PREFS.sounds}); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
+    if(a==="speakerVoice"||a==="sounds"||a==="red"){ PREFS[a]=!PREFS[a]; savePrefs(); if(a==="red") toast(PREFS.red?"Redundant audio on (next call)":"Redundant audio off (next call)"); if(a==="sounds") nat("Background","setMessageNotifications",{on:PREFS.sounds}); const s=st.querySelector(".switch"); s.classList.toggle("on",PREFS[a]); s.setAttribute("aria-checked",PREFS[a]); return; }
     return; }
 }
 
@@ -1533,7 +1534,7 @@ async function prepare(sess){
     sess.relay = sess.outgoing ? (PREFS.relay||"auto") : ((sess.inc&&sess.inc.relay)||"auto"); sess.diag.relay=sess.relay;
     const pc=new RTCPeerConnection({...iceWith(cf, sess.relay), iceCandidatePoolSize:2}); sess.pc=pc;
     sess.local.getTracks().forEach(t=>pc.addTrack(t,sess.local));
-    preferRed(pc, sess);
+    if(PREFS.red!==false) preferRed(pc, sess); else sess.log("audio RED off (setting)");
     tuneSenders(pc, sess.video);
     pc.ontrack=e=>{ if(e.streams[0]) sess.remote=e.streams[0]; else sess.remote.addTrack(e.track); attachRemote(sess); };
     pc.onicecandidateerror=e=>{ const k=e.errorCode+" "+(e.url||""); sess.diag.errs[k]=(sess.diag.errs[k]||0)+1; };
