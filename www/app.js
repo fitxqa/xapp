@@ -1387,7 +1387,7 @@ function showMini(s){
     makeDraggable(d, restoreCall);
   } else {
     const b=document.createElement("button"); b.id="callbar"; b.className="callbar"; b.setAttribute("aria-label","Return to call");
-    b.innerHTML=`<span class="cbdot"></span><b>${esc(name)}</b><span id="cbT">${s.connAt?dur((Date.now()-s.connAt)/1000):"…"}</span><span class="cbtap">Tap to return</span>`;
+    b.innerHTML=`<span class="cbdot"></span><span>Tap to return to call</span><span aria-hidden="true">·</span><span class="cbn">${esc(name)}</span><span id="cbT">${s.connAt?dur((Date.now()-s.connAt)/1000):"…"}</span>`;
     b.onclick=restoreCall; document.body.appendChild(b); document.body.classList.add("incall");
   }
 }
