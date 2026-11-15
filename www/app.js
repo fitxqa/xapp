@@ -648,7 +648,7 @@ function renderSettings(L){
     ${row("contacts","users","Contacts", myContacts().length+" contacts")}
     ${S.isAdmin?row("admin","shield","Admin panel","Users, calls, reports, announcements"):""}
     ${row("help","info","Help","About Xapp, version")}
-    <div class="wfoot">from<br><b>Xapp</b><span>Founder Mohammed Razeem</span></div>
+    <div class="wfoot">from<br><b>Xapp</b><span>Developed by Mohammed Razeem</span></div>
   </div>`;
   if(S.setPage && !$("#sheet").hidden && $("#sheet").dataset.page===S.setPage) openSettingsPage(S.setPage);   // keep an open page up to date
 }
@@ -678,7 +678,7 @@ function openSettingsPage(page){
       ${Object.entries(RELAYS).map(([k,l])=>`<button class="wset" data-set="relay:${k}" role="radio" aria-checked="${(PREFS.relay||"auto")===k}"><span class="wradio ${(PREFS.relay||"auto")===k?"on":""}"></span><span class="wt"><b>${l}</b>${k==="auto"?"<small>Recommended</small>":""}</span></button>`).join("")}
       <div class="wnote">The person you call uses your choice too. To compare, call once with each relay and tap the signal bars during the call to see the delay.</div>
       ${isNative()&&!api.demo?bgSection():""}`;
-  if(page==="help") body=`<div class="about" style="margin:14px 16px"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small></span></div>
+  if(page==="help") body=`<div class="about" style="margin:14px 16px"><img src="splash-icon.png" alt=""><span style="flex:1;min-width:0"><b>Xapp</b><small>Chat · Call · Updates · <span id="appVer">v${esc(APP_VERSION)}</span></small><small>Founder: <span class="fd">Mohammed Razeem</span></small><small>Developed by <span class="fd">Mohammed Razeem</span></small></span></div>
       <div class="wsec">Help</div>
       ${srow("net","wifi","Call quality check",{sub:"Test the connection used for calls"})}
       ${isNative()&&!api.demo?srow("calls2","phone","Calls not ringing?",{sub:"Check the ringing settings"}):""}`;
