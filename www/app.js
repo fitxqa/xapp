@@ -1425,7 +1425,7 @@ function preferRed(pc, sess){
 function tuneSenders(pc, video){
   pc.getSenders().forEach(snd=>{ if(!snd.track) return; try{
     const p=snd.getParameters(); if(!p.encodings||!p.encodings.length) p.encodings=[{}];
-    if(snd.track.kind==="audio"){ p.encodings[0].priority="high"; p.encodings[0].networkPriority="high"; p.encodings[0].maxBitrate=80000; /* room for redundant audio */ }
+    if(snd.track.kind==="audio"){ p.encodings[0].priority="high"; p.encodings[0].networkPriority="high"; p.encodings[0].maxBitrate=40000; /* Opus + redundancy stays around 60 kbps total */ }
     else { p.encodings[0].priority="low"; p.encodings[0].networkPriority="low"; p.encodings[0].maxBitrate=900000; p.degradationPreference="balanced"; }
     snd.setParameters(p).catch(()=>{});
   }catch(e){} });
@@ -1446,7 +1446,7 @@ function renderNetInfo(sess){
 }
 /* watch the line every 2 s: show signal bars, and step video down/up */
 function watchQuality(sess){
-  let last=null, level=3;
+  let last=null, level=3;   // video starts at a medium step and rises only when the connection proves good
   const steps=[{br:900000,scale:1},{br:450000,scale:1.5},{br:200000,scale:2},{br:90000,scale:3},{br:0,scale:4}];
   sess.qT=setInterval(async()=>{
     const pc=sess.pc; if(!pc||sess.closed) return clearInterval(sess.qT);
@@ -1474,7 +1474,10 @@ function watchQuality(sess){
     sess.quality=q; const n=$("#netQ"); if(n){ n.dataset.q=q; n.title=`Loss ${(loss*100).toFixed(0)}% · delay ${Math.round(rtt*1000)} ms`; }
     if(!sess.video) return;
     const prev=level;
-    if(q<=1) level=Math.min(steps.length-1, level+1); else if(q===2) level=Math.min(3, level+1); else if(q===4 && level>0) level--;
+    // big delay means the link is queueing: drop video at once (not step by step) so the voice gets through
+    if(rtt>1.0) level=steps.length-1;
+    else if(rtt>0.6) level=Math.max(level,3);
+    else if(q<=1) level=Math.min(steps.length-1, level+1); else if(q===2) level=Math.min(3, level+1); else if(q===4 && level>0) level--;
     if(level===prev) return;
     const snd=pc.getSenders().find(x=>x.track&&x.track.kind==="video"); if(!snd) return;
     try{ const p=snd.getParameters(); if(!p.encodings||!p.encodings.length) p.encodings=[{}];
