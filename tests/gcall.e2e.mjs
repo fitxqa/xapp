@@ -61,7 +61,8 @@ const s0 = await state(pages[0]), s1 = await state(pages[1]);
 ok("after Ahmed leaves, Razeem has 1 connection", s0.peers === 1);
 ok("after Ahmed leaves, Shiyana has 1 connection", s1.peers === 1);
 await pages[1].click("#gEnd"); await sleep(2000); await pages[0].click("#gEnd"); await sleep(2000);
-const ended = await env.withSecurityRulesDisabled(async ctx => { const { getDocs, collection } = await import("firebase/firestore"); const q = await getDocs(collection(ctx.firestore(), "calls")); return q.docs.map(d => d.data().status); });
+let ended = [];
+await env.withSecurityRulesDisabled(async ctx => { const { getDocs, collection } = await import("firebase/firestore"); const q = await getDocs(collection(ctx.firestore(), "calls")); ended = q.docs.map(d => d.data().status); });
 ok("call marked ended when everyone left", ended.length === 1 && ended[0] === "ended");
 for (const p of pages) { const l = await p.evaluate(() => LOG); if (l.length) console.log("log", JSON.stringify(l)); }
 console.log(`RESULT group calls: ${pass} passed, ${fail} failed`);
