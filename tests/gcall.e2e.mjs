@@ -44,8 +44,9 @@ const state = p => p.evaluate(async () => { const g = XG.active(); if (!g) retur
   for (const [u, pr] of g.peers) { if (pr.pc.connectionState === "connected") out.connected++; (await pr.pc.getStats()).forEach(r => { if (r.type === "inbound-rtp" && r.kind === "audio") out.audioIn += r.packetsReceived || 0; }); }
   return out; });
 
+await sleep(2500);   // let every phone's listener attach
 await pages[0].evaluate(GID => XG.startGroupCall(GID, false), GID);
-await sleep(3000);
+await pages[1].waitForSelector("#gcin", { timeout: 12000 }).catch(() => {}); await pages[2].waitForSelector("#gcin", { timeout: 6000 }).catch(() => {});
 console.log("A log", JSON.stringify(await pages[0].evaluate(() => [LOG, !!XG.active(), XG.live().length])));
 console.log("B log", JSON.stringify(await pages[1].evaluate(() => [LOG, XG.live().length])));
 ok("Shiyana sees the incoming group call", await pages[1].evaluate(() => !!document.querySelector("#gcin")));

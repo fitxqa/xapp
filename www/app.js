@@ -472,6 +472,7 @@ api.onAuth(user=>{
   subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); saveStartCache(); }));
   { let un=api.watchIncoming(incoming, gone); api._reIncoming=()=>{ try{un();}catch(e){} un=api.watchIncoming(incoming, gone); }; subs.push(()=>un()); }
   subs.push(api.watchAnnouncements(showAnnouncement));
+  if(window.XG){ XG.watchLive(); }
   if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
   if(api.onTyping) subs.push(api.onTyping(p=>{ S.typing=p; if(S.peer) renderChatHead(); }));
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); setTimeout(()=>{ if(S.pendingShare){ const p=S.pendingShare; S.pendingShare=null; onShare(p); } else nat("Background","takeShare").then(onShare).catch(()=>{}); },800); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); setTimeout(pushSetup,2500); }
@@ -924,8 +925,14 @@ function renderChatHead(){
   if(isGroup(S.peer)){ const g=groupOf(S.peer)||{name:"Group",members:[]};
     const names=(g.members||[]).map(id=>id===S.me.uid?"You":(S.users[id]||{}).name).filter(Boolean);
     $("#chatHead").innerHTML=`<button class="ibtn back" id="cBack" aria-label="Back">${ico("back")}</button><button class="who" id="gInfo" style="text-align:left">${groupAvatar(g,"sm")}<div style="min-width:0"><b>${esc(g.name||"Group")}</b><small>${esc(names.join(", "))}</small></div></button>
+      ${(()=>{ const lv=(window.XG&&XG.live()||[]).find(c=>c.chat===S.peer&&!(c.joined||[]).includes(S.me.uid)); return lv?`<button class="gjoin" id="gJoinHead">${ico(lv.video?"video":"phone")} Join</button>`
+        :`<button class="ibtn" id="gVid" aria-label="Group video call">${ico("video")}</button><button class="ibtn" id="gCall" aria-label="Group voice call">${ico("phone")}</button>`; })()}
       <button class="ibtn" id="cMore" aria-label="Group info">${ico("more")}</button>`;
-    $("#cBack").onclick=closeChat; $("#gInfo").onclick=$("#cMore").onclick=()=>openGroupInfo(S.peer); return; }
+    $("#cBack").onclick=closeChat; $("#gInfo").onclick=$("#cMore").onclick=()=>openGroupInfo(S.peer);
+    if($("#gVid")) $("#gVid").onclick=()=>XG.startGroupCall(S.peer,true);
+    if($("#gCall")) $("#gCall").onclick=()=>XG.startGroupCall(S.peer,false);
+    if($("#gJoinHead")) $("#gJoinHead").onclick=()=>{ const lv=XG.live().find(c=>c.chat===S.peer); if(lv) XG.joinGroupCall(lv); };
+    return; }
   const u=S.users[S.peer]||{uid:S.peer,name:"Contact"};
   const sub = S.typing===S.peer ? `<small class="typing">typing…</small>` : `<small>${isOnline(u)?"online":u.lastSeen?"last seen "+(dayLabel(u.lastSeen)==="Today"?"today at ":dayLabel(u.lastSeen)+" at ")+hm(u.lastSeen):esc(u.about||"")}</small>`;
   $("#chatHead").innerHTML=`<button class="ibtn back" id="cBack" aria-label="Back">${ico("back")}</button><div class="who">${avatar(u,"sm")}<div style="min-width:0"><b>${esc(u.name)}</b>${sub}</div></div>
@@ -1269,6 +1276,7 @@ S.pendingAction=null;
 function takeCallAction(a){ if(!a||!a.id) return; S.pendingAction={...a, at:Date.now()}; applyCallAction(); }
 function applyCallAction(){
   const a=S.pendingAction; if(!a||Date.now()-a.at>60000) return;
+  if(!(call && call.inc && call.inc.id===a.id) && window.XG && S.me){ S.pendingAction=null; XG.groupCallAction(a).then(done=>{ if(!done) S.pendingAction=a; }); return; }
   if(call && call.inc && call.inc.id===a.id && !call.startedAt){
     S.pendingAction=null;
     if(a.action==="answer") setTimeout(answer,150);

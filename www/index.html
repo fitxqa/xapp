@@ -442,6 +442,35 @@ body.incall{--cb:30px}
 .callbar #cbT{font-variant-numeric:tabular-nums;font-weight:600}
 .cbdot{width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1.2s infinite;flex:none}
 .shell,#chatPane,.sheet,.scan,.viewer{padding-top:calc(env(safe-area-inset-top,0px) + var(--cb))!important}
+/* ---- group calls ---- */
+.gcall,.gcin{position:fixed;inset:0;z-index:70;background:#0f1012;color:#fff;display:flex;flex-direction:column;padding-top:calc(env(safe-area-inset-top,0px) + var(--cb));padding-bottom:env(safe-area-inset-bottom,0px)}
+.gtop{padding:22px 18px 10px;text-align:center}.gtop b{font-size:19px;display:block}.gtop small{color:#b9b3ab;font-size:13px}
+.ggrid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:6px;padding:6px;min-height:0}
+.ggrid[data-n="1"],.ggrid[data-n="2"]{grid-template-columns:1fr}
+.gt{position:relative;border-radius:16px;overflow:hidden;background:linear-gradient(160deg,#3a3f47,#1c1f24)}
+.gt video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.gt.mine video{transform:scaleX(-1)}
+.gt .gface{position:absolute;inset:0;display:none;place-items:center}.gt.novid .gface{display:grid}.gt.novid video{opacity:0}
+.gt.spk,.gp.spk .av{box-shadow:inset 0 0 0 3px #ff6a13}
+.gp.spk .av{box-shadow:0 0 0 4px #0f1012,0 0 0 7px #ff6a13}
+.gnm{position:absolute;left:10px;bottom:9px;font-size:12.5px;background:rgba(0,0,0,.5);padding:3px 9px;border-radius:999px;display:flex;gap:5px;align-items:center;max-width:calc(100% - 20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gmic{color:#ff6b6b;display:inline-flex}.gmic svg.i{width:13px;height:13px}
+.gvoice{flex:1;display:flex;flex-wrap:wrap;justify-content:center;align-content:center;gap:24px 28px;padding:20px;overflow:auto}
+.gp{display:flex;flex-direction:column;align-items:center;gap:7px;width:104px;text-align:center}
+.gp .av,.gt .av.lg,.gstack .av{width:84px;height:84px;font-size:32px}
+.gp small{font-size:13.5px;color:#eee;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.gp em{font-style:normal;font-size:12px;color:#9b968f}
+.gctr{display:flex;justify-content:space-around;padding:14px 10px 26px}
+.gb{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;display:grid;place-items:center}
+.gb svg.i{width:25px;height:25px}.gb.on{background:#fff;color:#111}.gb.end{background:#e5484d}.gb.end svg.i{transform:rotate(135deg)}
+.gb.join{background:#1daa61}.gb.big{width:68px;height:68px}
+.gcin{background:linear-gradient(#2a1a10,#0f1012)}
+.gcin-mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;padding:20px;text-align:center}
+.gcin-mid b{font-size:25px;margin-top:12px}.gcin-mid small{color:#d2c9be;font-size:14.5px}.gcin-mid .gcin-sub{color:#9b968f;font-size:13px}
+.gstack{display:flex}.gstack .av{border:3px solid #1a1410;margin-left:-18px;width:70px;height:70px}.gstack .av:first-child{margin-left:0}
+.gcin-btns{display:flex;justify-content:center;gap:90px;padding:0 0 64px}
+.gcin-btns>div{display:flex;flex-direction:column;align-items:center;gap:9px;font-size:13.5px;color:#ccc}
+.gjoin{background:#1daa61;color:#fff;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.gjoin svg.i{width:18px;height:18px}
 </style>
 </head>
 <body>
@@ -527,5 +556,6 @@ body.incall{--cb:30px}
 
 <script src="app.js" defer></script>
 <script src="extras.js" defer></script>
+<script src="gcall.js" defer></script>
 </body>
 </html>

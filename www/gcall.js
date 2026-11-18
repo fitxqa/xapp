@@ -204,7 +204,7 @@ function watchLive(){
       if(Date.now()-(c.createdAt||0) > 10*60000) return;
       if(!gInc){ CALLS().doc(c.id).update({["ringingAt_"+meId()]:Date.now()}).catch(()=>{}); showIncoming(c); } });
     S.liveGroupCalls=live; if(S.peer&&isGroup(S.peer)) renderChatHead();
-  }, e=>console.warn("group calls", e));
+  }, e=>{ console.warn("group calls", e); setTimeout(()=>{ if(meId()) watchLive(); }, 2000); });   // reconnect if Firestore drops it
 }
 
 /* answer / decline from the notification (Xapp closed) */
