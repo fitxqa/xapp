@@ -24,8 +24,8 @@ for (const n of names) {
   const p = await (await browser.newContext()).newPage();
   p.on("pageerror", e => console.log(n, "PAGE ERROR", e.message));
   p.on("console", m => { if (["error", "warning"].includes(m.type())) console.log(n, "CONSOLE", m.type(), m.text().slice(0, 300)); });
-  await p.route("http://xapp.test/", r => r.fulfill({ body: harness, contentType: "text/html" }));
-  await p.goto("http://xapp.test/");
+  await p.route("http://localhost:5577/", r => r.fulfill({ body: harness, contentType: "text/html" }));
+  await p.goto("http://localhost:5577/");
   const uid = await p.evaluate(async n => (await firebase.auth().createUserWithEmailAndPassword(n.toLowerCase() + "@xapp.local", "secret123")).user.uid, n);
   pages.push(p); uids.push(uid);
 }
