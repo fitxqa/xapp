@@ -23,6 +23,7 @@ const names = ["Razeem", "Shiyana", "Ahmed"], pages = [], uids = [];
 for (const n of names) {
   const p = await (await browser.newContext()).newPage();
   p.on("pageerror", e => console.log(n, "PAGE ERROR", e.message));
+  p.on("console", m => { if (["error", "warning"].includes(m.type())) console.log(n, "CONSOLE", m.type(), m.text().slice(0, 300)); });
   await p.route("http://xapp.test/", r => r.fulfill({ body: harness, contentType: "text/html" }));
   await p.goto("http://xapp.test/");
   const uid = await p.evaluate(async n => (await firebase.auth().createUserWithEmailAndPassword(n.toLowerCase() + "@xapp.local", "secret123")).user.uid, n);
@@ -44,10 +45,12 @@ const state = p => p.evaluate(async () => { const g = XG.active(); if (!g) retur
 
 await pages[0].evaluate(GID => XG.startGroupCall(GID, false), GID);
 await sleep(3000);
+console.log("A log", JSON.stringify(await pages[0].evaluate(() => [LOG, !!XG.active(), XG.live().length])));
+console.log("B log", JSON.stringify(await pages[1].evaluate(() => [LOG, XG.live().length])));
 ok("Shiyana sees the incoming group call", await pages[1].evaluate(() => !!document.querySelector("#gcin")));
 ok("Ahmed sees the incoming group call", await pages[2].evaluate(() => !!document.querySelector("#gcin")));
-await pages[1].click("#gJoin"); await sleep(4000);
-await pages[2].click("#gJoin"); await sleep(8000);
+await pages[1].click("#gJoin", { timeout: 5000 }).catch(() => console.log("no Join button for Shiyana")); await sleep(4000);
+await pages[2].click("#gJoin", { timeout: 5000 }).catch(() => console.log("no Join button for Ahmed")); await sleep(8000);
 for (let i = 0; i < 3; i++) { const s = await state(pages[i]); console.log(names[i], JSON.stringify(s));
   ok(names[i] + " is connected to both others", s.peers === 2 && s.connected === 2);
   ok(names[i] + " hears the others (audio packets arriving)", s.audioIn > 50); }
