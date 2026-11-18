@@ -58,9 +58,10 @@ async function enter(id, doc, local, isCaller){
     drawTiles();
   }));
   // connections started by people who join after me
-  G.subs.push(CALLS().doc(id).collection("peers").where("to","==",meId()).onSnapshot(s=>{ s.docChanges().forEach(ch=>{
-    const p=ch.doc.data(); if(ch.type==="added" && p.offer && !G.peers.has(p.from)) connect(p.from,false,ch.doc.ref,p.offer);
-  }); }));
+  const listenOffers=()=>CALLS().doc(id).collection("peers").where("to","==",meId()).onSnapshot(s=>{ if(!G||G.id!==id) return; s.docChanges().forEach(ch=>{
+    const p=ch.doc.data(); if(ch.type!=="removed" && p.offer && !p.answer && !G.peers.has(p.from)) connect(p.from,false,ch.doc.ref,p.offer);
+  }); }, e=>{ console.warn("offers", e); setTimeout(()=>{ if(G&&G.id===id) G.subs.push(listenOffers()); }, 1500); });
+  G.subs.push(listenOffers());
   G.tick=setInterval(()=>{ const t=$("#gcT"); if(t) t.textContent=dur((Date.now()-G.startedAt)/1000); speaking(); }, 500);
   // nobody answered in 50 s: end the call
   if(isCaller) G.noAnswerT=setTimeout(()=>{ if(G&&G.id===id&&G.peers.size===0){ toast("No one joined"); leave("noanswer"); } }, 50000);
@@ -91,19 +92,18 @@ async function connect(uid, initiator, refIn, offerIn){
   pc.ontrack=e=>{ e.streams[0] ? e.streams[0].getTracks().forEach(t=>{ if(!peer.stream.getTracks().includes(t)) peer.stream.addTrack(t); }) : peer.stream.addTrack(e.track); drawTiles(); };
   pc.onconnectionstatechange=()=>{ peer.state=pc.connectionState; drawTiles(); if(pc.connectionState==="failed") { try{ pc.restartIce&&pc.restartIce(); }catch(e){} } };
   const ref = refIn || CALLS().doc(g.id).collection("peers").doc(meId()+"_"+uid);
-  pc.onicecandidate=e=>{ if(e.candidate) ref.collection("cands").add({from:meId(), c:e.candidate.toJSON()}).catch(()=>{}); };
-  const addCand=c=>{ if(peer.remoteSet) pc.addIceCandidate(c).catch(()=>{}); else peer.cands.push(c); };
-  const flush=()=>{ peer.remoteSet=true; peer.cands.splice(0).forEach(c=>pc.addIceCandidate(c).catch(()=>{})); };
-  g.subs.push(ref.collection("cands").where("from","==",uid).onSnapshot(s=>s.docChanges().forEach(ch=>{ if(ch.type==="added") addCand(ch.doc.data().c); })));
+  // The network addresses travel INSIDE the offer/answer (gathered first), so there is no separate message that could get lost.
+  const gathered=()=>new Promise(res=>{ if(pc.iceGatheringState==="complete") return res(); const t=setTimeout(res,3000);
+    pc.addEventListener("icegatheringstatechange",()=>{ if(pc.iceGatheringState==="complete"){ clearTimeout(t); res(); } }); });
   try{
     if(initiator){
-      const o=await pc.createOffer(); o.sdp=tuneSdp(o.sdp); await pc.setLocalDescription(o);
-      await ref.set({from:meId(), to:uid, offer:{type:o.type, sdp:o.sdp}, at:Date.now()});
-      g.subs.push(ref.onSnapshot(async s=>{ const d=s.data(); if(d&&d.answer&&!peer.remoteSet){ try{ await pc.setRemoteDescription(d.answer); flush(); }catch(e){} } }));
+      const o=await pc.createOffer(); o.sdp=tuneSdp(o.sdp); await pc.setLocalDescription(o); await gathered();
+      await ref.set({from:meId(), to:uid, offer:{type:"offer", sdp:pc.localDescription.sdp}, at:Date.now()});
+      g.subs.push(ref.onSnapshot(async s=>{ const d=s.data(); if(d&&d.answer&&!peer.remoteSet){ peer.remoteSet=true; try{ await pc.setRemoteDescription(d.answer); }catch(e){ peer.remoteSet=false; } } }, e=>console.warn("peer doc", e)));
     } else {
-      await pc.setRemoteDescription(offerIn); flush();
-      const a=await pc.createAnswer(); a.sdp=tuneSdp(a.sdp); await pc.setLocalDescription(a);
-      await ref.update({answer:{type:a.type, sdp:a.sdp}});
+      peer.remoteSet=true; await pc.setRemoteDescription(offerIn);
+      const a=await pc.createAnswer(); a.sdp=tuneSdp(a.sdp); await pc.setLocalDescription(a); await gathered();
+      await ref.update({answer:{type:"answer", sdp:pc.localDescription.sdp}});
     }
   }catch(e){ console.warn("group connect", e); }
   clearTimeout(g.noAnswerT);
