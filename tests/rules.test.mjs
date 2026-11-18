@@ -56,6 +56,21 @@ await t("tokens: others can't read", getDoc(doc(B, "tokens", "A")), false);
 await t("calls: A calls B", setDoc(doc(A, "calls", "c1"), { caller: "A", callee: "B", status: "ringing" }), true);
 await t("calls: blocked D can't call", setDoc(doc(D, "calls", "c2"), { caller: "D", callee: "A", status: "ringing" }), false);
 
+// ---- group calls ----
+await t("gcall: A starts a group call", setDoc(doc(A, "calls", "g1"), { group: true, chat: G, caller: "A", members: ["A", "B"], liveMembers: ["A", "B"], joined: ["A"], status: "ringing", createdAt: 1 }), true);
+await t("gcall: B sees live group calls", getDocs(query(collection(B, "calls"), where("liveMembers", "array-contains", "B"))), true);
+await t("gcall: B joins", updateDoc(doc(B, "calls", "g1"), { joined: arrayUnion("B"), status: "active" }), true);
+await t("gcall: outsider C can't read", getDoc(doc(C, "calls", "g1")), false);
+await t("gcall: outsider C can't join", updateDoc(doc(C, "calls", "g1"), { joined: arrayUnion("C") }), false);
+await t("gcall: B offers to A", setDoc(doc(B, "calls/g1/peers", "B_A"), { from: "B", to: "A", offer: { type: "offer", sdp: "x" } }), true);
+await t("gcall: A answers", updateDoc(doc(A, "calls/g1/peers", "B_A"), { answer: { type: "answer", sdp: "y" } }), true);
+await t("gcall: A lists offers to A", getDocs(query(collection(A, "calls/g1/peers"), where("to", "==", "A"))), true);
+await t("gcall: candidates", addDoc(collection(A, "calls/g1/peers/B_A/cands"), { from: "A", c: {} }), true);
+await t("gcall: C can't write someone else's connection", updateDoc(doc(C, "calls/g1/peers", "B_A"), { answer: { type: "answer", sdp: "z" } }), false);
+await t("gcall: end", updateDoc(doc(A, "calls", "g1"), { status: "ended", liveMembers: [], joined: [] }), true);
+await t("gcall: B still reads ended call", getDoc(doc(B, "calls", "g1")), true);
+await t("calls: 1-to-1 still private", getDoc(doc(C, "calls", "c1")), false);
+
 console.log(`RESULT rules: ${pass} passed, ${fail} failed`);
 await env.cleanup();
 process.exit(fail ? 1 : 0);

@@ -76,7 +76,15 @@ service cloud.firestore {
       allow read, update: if signed()
         && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid);
       allow read: if isAdmin();
+      // group calls: members can see and join a call of their group while it is live
+      allow read, update: if signed() && resource.data.get('group', false) == true
+        && (request.auth.uid in resource.data.get('liveMembers', []) || request.auth.uid in resource.data.get('members', []));
       match /{side}/{candId} { allow read, create: if signed(); }
+      // group call: one connection between two people (id = from_to); only those two write it
+      match /peers/{pair} {
+        allow read, create, update: if signed() && pair.split('_').hasAny([request.auth.uid]);
+        match /cands/{c} { allow read, create: if signed() && pair.split('_').hasAny([request.auth.uid]); }
+      }
     }
     match /statuses/{sid} {
       allow read: if signed();
