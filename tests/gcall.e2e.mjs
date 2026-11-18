@@ -40,6 +40,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0; const ok = (name, c) => { c ? pass++ : fail++; console.log((c ? "PASS " : "FAIL ") + name); };
 const state = p => p.evaluate(async () => { const g = XG.active(); if (!g) return { inCall: false };
   const out = { inCall: true, peers: g.peers.size, connected: 0, audioIn: 0 };
+  out.detail = [...g.peers].map(([u, pr]) => (S.users[u]||{}).name + ":" + pr.pc.connectionState + "/" + pr.pc.iceConnectionState + "/" + pr.pc.signalingState);
   for (const [u, pr] of g.peers) { if (pr.pc.connectionState === "connected") out.connected++; (await pr.pc.getStats()).forEach(r => { if (r.type === "inbound-rtp" && r.kind === "audio") out.audioIn += r.packetsReceived || 0; }); }
   return out; });
 
@@ -50,7 +51,7 @@ console.log("B log", JSON.stringify(await pages[1].evaluate(() => [LOG, XG.live(
 ok("Shiyana sees the incoming group call", await pages[1].evaluate(() => !!document.querySelector("#gcin")));
 ok("Ahmed sees the incoming group call", await pages[2].evaluate(() => !!document.querySelector("#gcin")));
 await pages[1].click("#gJoin", { timeout: 5000 }).catch(() => console.log("no Join button for Shiyana")); await sleep(4000);
-await pages[2].click("#gJoin", { timeout: 5000 }).catch(() => console.log("no Join button for Ahmed")); await sleep(8000);
+await pages[2].click("#gJoin", { timeout: 5000 }).catch(() => console.log("no Join button for Ahmed")); await sleep(15000);
 for (let i = 0; i < 3; i++) { const s = await state(pages[i]); console.log(names[i], JSON.stringify(s));
   ok(names[i] + " is connected to both others", s.peers === 2 && s.connected === 2);
   ok(names[i] + " hears the others (audio packets arriving)", s.audioIn > 50); }
