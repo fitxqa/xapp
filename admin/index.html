@@ -278,7 +278,10 @@ function calls(v){
   const list=D.calls.filter(f);
   v.innerHTML = `<h2>Calls <span class="q">(last ${D.calls.length})</span></h2>
     <div class="tools">${[["all","All"],["missed","Not answered"],["poor","Poor quality"],["failed","Failed"]].map(([k,l])=>`<button class="chip" data-f="${k}" aria-pressed="${D.f===k}">${l}</button>`).join("")}</div>
-    <div class="list">${list.map(c=>{ const a=U(c.caller), b=U(c.callee), qs=qOf(c);
+    <div class="list">${list.map(c=>{ if(c.group){ const a=U(c.caller), n=(c.joined||[]).length;
+        return `<div class="row"><div class="mid"><b>${esc(a.name)} → group call ${c.video?'<span class="tag">Video</span>':'<span class="tag">Voice</span>'} <span class="tag ${c.status==="ended"?"":"ok"}">${c.status==="ended"?"Ended":"Live"}</span></b>
+          <small>${when(c.createdAt)} · ${(c.members||[]).length} members${c.endedAt?" · "+dur((c.endedAt-c.createdAt)/1000):""}</small></div></div>`; }
+      const a=U(c.caller), b=U(c.callee), qs=qOf(c);
       const len=c.answeredAt&&c.endedAt?dur((c.endedAt-c.answeredAt)/1000):"";
       const st=c.answeredAt?`<span class="tag ok">Answered${len?" · "+len:""}</span>`:c.status==="declined"?'<span class="tag warn">Declined</span>':c.status==="ringing"?'<span class="tag">Ringing</span>':'<span class="tag bad">Missed</span>';
       return `<div class="row"><div class="mid"><b>${esc(a.name)} → ${esc(b.name)} ${c.video?'<span class="tag">Video</span>':'<span class="tag">Voice</span>'} ${st}</b>
