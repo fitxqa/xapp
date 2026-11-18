@@ -82,7 +82,7 @@ function makeFire(){
     demo:false,
     onAuth(cb){
       auth.onAuthStateChanged(async u => {
-        if(!u){ me=null; try{ localStorage.removeItem("xappMe"); }catch(e){} return cb(null); }
+        if(!u){ me=null; try{ localStorage.removeItem("xappMe"); localStorage.removeItem("xappStart"); }catch(e){} return cb(null); }
         me = u.uid;
         let cached=null; try{ cached=JSON.parse(localStorage.getItem("xappMe")||"null"); }catch(e){}
         if(cached && cached.uid===me){ cb(cached); cb=()=>{}; }       // show the app at once; the live profile follows
@@ -438,6 +438,20 @@ $("#loginForm").onsubmit=async e=>{
 };
 
 let subs=[];
+/* ---- instant start (like WhatsApp): show the last chat list from a small saved copy at once,
+   while Firebase starts in the background; the live data replaces it a moment later ---- */
+let cacheT=0;
+function saveStartCache(){
+  if(!S.me||api.demo) return; clearTimeout(cacheT);
+  cacheT=setTimeout(()=>{ try{
+    const keep=new Set([S.me.uid]); S.chats.forEach(c=>(c.members||[]).forEach(m=>keep.add(m))); (S.calls||[]).slice(0,40).forEach(c=>{keep.add(c.caller);keep.add(c.callee);});
+    const users={}; keep.forEach(id=>{ const u=S.users[id]; if(u) users[id]={uid:u.uid,name:u.name,username:u.username,about:u.about,lastSeen:u.lastSeen,photo:(u.photo&&u.photo.length<20000)?u.photo:""}; });
+    const chats=S.chats.filter(c=>c.lastAt).sort((a,b)=>b.lastAt-a.lastAt).slice(0,60).map(c=>{ const o={}; for(const k in c){ if(typeof c[k]!=="object"||Array.isArray(c[k])) o[k]=c[k]; } return o; });
+    const calls=(S.calls||[]).slice(0,40).map(c=>({id:c.id,caller:c.caller,callee:c.callee,video:c.video,status:c.status,createdAt:c.createdAt,answeredAt:c.answeredAt,endedAt:c.endedAt}));
+    localStorage.setItem("xappStart", JSON.stringify({uid:S.me.uid, users, chats, calls, at:Date.now()}));
+  }catch(e){} }, 1500);
+}
+
 function hideBoot(){ nat("Background","appReady"); const b=$("#boot"); if(!b||b.classList.contains("out")) return; requestAnimationFrame(()=>{ b.classList.add("out"); setTimeout(()=>b.remove(),260); }); }
 setTimeout(hideBoot, 6000);   // never stay on the boot screen
 api.onAuth(user=>{
@@ -453,9 +467,9 @@ api.onAuth(user=>{
   subs.push(api.watchChats(cs=>{ notifyNew(cs); S.chats=cs; api.wantUsers(cs.flatMap(c=>isGroup(c.id)?(c.members||[]):[peerOf(c)]));
     if(isGroup(S.peer) && !cs.some(c=>c.id===S.peer)){ toast("You're no longer in this group"); closeChat(); }
     else if(isGroup(S.peer)) renderChatHead();
-    renderList(); }));
+    renderList(); saveStartCache(); }));
   subs.push(api.watchStatuses(st=>{ S.statuses=st; if(S.tab==="updates") renderList(); }));
-  subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); }));
+  subs.push(api.watchCalls(cl=>{ S.calls=cl.sort((a,b)=>b.createdAt-a.createdAt); api.wantUsers(cl.map(c=>c.caller===S.me.uid?c.callee:c.caller)); renderList(); saveStartCache(); }));
   { let un=api.watchIncoming(incoming, gone); api._reIncoming=()=>{ try{un();}catch(e){} un=api.watchIncoming(incoming, gone); }; subs.push(()=>un()); }
   subs.push(api.watchAnnouncements(showAnnouncement));
   if(api.isAdmin) api.isAdmin().then(v=>{ S.isAdmin=v; if(v&&S.tab==="settings") renderList(true); });
@@ -463,6 +477,7 @@ api.onAuth(user=>{
   if(isNative()){ nat("Background","takeCallAction").then(takeCallAction); setTimeout(()=>{ if(S.pendingShare){ const p=S.pendingShare; S.pendingShare=null; onShare(p); } else nat("Background","takeShare").then(onShare).catch(()=>{}); },800); bgRefresh(); nat("Background","start"); setTimeout(bgEnsure,4000); setTimeout(pushSetup,2500); }
   cfIce();
   api.seenNow(); api.cleanProfile(); setActive(true);
+  if(S.instant){ S.instant=false; const p=S.peer; if(p){ try{ S.unsubMsgs&&S.unsubMsgs(); }catch(e){} openChat(p); } }   // a chat opened from the instant copy: connect it now
 });
 /* Battery: while Xapp is in the background only the call/message listeners stay on. The "online" signal and
    contacts' online status stop, and start again when Xapp comes back on screen. */
@@ -1636,3 +1651,11 @@ function onBack(){
 try{ const C=window.Capacitor; if(C&&C.getPlatform&&C.getPlatform()!=="web"){
   if(C.Plugins&&C.Plugins.App&&C.Plugins.App.addListener) C.Plugins.App.addListener("backButton",onBack);
   else if(C.nativeCallback) C.nativeCallback("App","addListener",{eventName:"backButton"},onBack); } }catch(e){}
+
+/* run last, once everything above is defined */
+(function instantStart(){ try{
+  const me=JSON.parse(localStorage.getItem("xappMe")||"null"), c=JSON.parse(localStorage.getItem("xappStart")||"null");
+  if(!me||!c||c.uid!==me.uid||(window.XAPP_CONFIG&&!(window.XAPP_CONFIG.firebase||{}).apiKey)) return;
+  S.me=me; S.users=c.users||{}; S.chats=c.chats||[]; S.calls=c.calls||[]; S.instant=true;
+  $("#login").hidden=true; $("#shell").hidden=false; renderList(true); hideBoot();
+}catch(e){} })();
