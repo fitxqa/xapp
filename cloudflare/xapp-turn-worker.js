@@ -1,5 +1,5 @@
 /**
- * Xapp Cloudflare Worker (version 7: groups, password-free background calls, push fix)
+ * Xapp Cloudflare Worker (version 8: anyone in a group call can ring / add people)
  *  1. Relay: fresh Cloudflare TURN login details (12 hours) so calls use the nearest data centre (Doha).
  *  2. Google push: wakes the other phone for calls and messages (like WhatsApp), so Xapp needs no always-on connection.
  *
@@ -15,7 +15,7 @@ const MY_FIREBASE_KEY = String.raw`PASTE_THE_WHOLE_KEY_FILE_HERE`;
 // ===================================================================================================================
 
 const FIREBASE_WEB_API_KEY = "AIzaSyAfvocJ8xYish8hfItCh9MwHue8-cFsHJA";   // Xapp's public web key (same as in the app)
-const VERSION = 7;
+const VERSION = 8;
 
 export default {
   async fetch(request, env0) {
@@ -70,11 +70,18 @@ async function notify(b, sa) {
   let data = { type, sender: uid }, targets = [to];
   if (type === "gcall" || type === "gcancel") {                // group call: ring every member except the caller
     const c = await doc(`calls/${b.id}`);
-    if (!c || !c.group || c.caller !== uid || !Array.isArray(c.members) || !c.members.includes(uid)) return { ok: false, error: "not your group call" };
-    if (type === "gcall" && c.status !== "ringing") return { ok: false, error: "call not ringing" };
+    const joined = Array.isArray(c && c.joined) ? c.joined : [];
+    // the caller, or anyone already in the call, may ring people
+    if (!c || !c.group || !Array.isArray(c.members) || !(c.caller === uid || joined.includes(uid))) return { ok: false, error: "not your group call" };
+    if (type === "gcancel" && c.caller !== uid) return { ok: false, error: "only the caller can cancel" };
+    if (type === "gcall" && c.status === "ended") return { ok: false, error: "call ended" };
     const g = c.chat ? await doc(`chats/${c.chat}?mask.fieldPaths=name`) : null;
     data = { type: type === "gcall" ? "call" : "cancel", sender: uid, id: String(b.id), video: c.video ? "1" : "0", group: "1", title: (g && g.name) || "Group call" };
-    targets = c.members.filter(m => m !== uid);
+    // ring only people who are not in the call yet (optionally just the ones asked for)
+    const only = Array.isArray(b.only) ? b.only.map(String) : null;
+    targets = c.members.filter(m => m !== uid && !joined.includes(m) && (!only || only.includes(m)));
+    if (c.title && !(g && g.name)) data.title = c.title;
+    if (!targets.length) return { ok: true, sent: 0, of: 0 };
   } else if (type === "msg" && String(b.chat || "").startsWith("grp_")) {   // group message: every member except the sender
     const g = await doc(`chats/${b.chat}?mask.fieldPaths=members&mask.fieldPaths=name`);
     if (!g || !Array.isArray(g.members) || !g.members.includes(uid)) return { ok: false, error: "not in this group" };

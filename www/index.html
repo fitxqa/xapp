@@ -471,6 +471,26 @@ body.incall{--cb:30px}
 .gcin-btns>div{display:flex;flex-direction:column;align-items:center;gap:9px;font-size:13.5px;color:#ccc}
 .gjoin{background:#1daa61;color:#fff;border-radius:999px;padding:7px 14px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:6px}
 .gjoin svg.i{width:18px;height:18px}
+/* group call: Add sheet + join bar */
+.gb.add{background:#ff6a13;color:#140700}
+.gadd{position:fixed;inset:0;z-index:75}
+.gadd-bg{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+.gadd-card{position:absolute;left:0;right:0;bottom:0;max-height:78%;background:var(--panel);color:var(--text,#141414);border-radius:22px 22px 0 0;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom,0px)}
+.gadd-h{padding:6px 18px 10px;font-size:17px;font-weight:600}.gadd-h small{color:var(--mute);font-weight:400;font-size:13px}
+.gadd-q{margin:0 14px 6px;border-radius:999px;padding:10px 14px}
+.gadd-list{overflow:auto;padding-bottom:12px}
+.gsec{font-size:13px;font-weight:600;color:var(--orange);padding:12px 18px 4px}
+.gar{display:flex;align-items:center;gap:12px;padding:8px 18px}.gar .av{width:44px;height:44px}
+.gam{flex:1;min-width:0}.gam b{display:block;font-size:15.5px;font-weight:500}.gam small{color:var(--mute);font-size:12.5px}
+.gpill{border-radius:999px;padding:7px 15px;font-size:13.5px;font-weight:600}
+.gpill.ring{background:color-mix(in srgb,#1daa61 16%,transparent);color:#1a8f54}
+.gpill.addp{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.gpill:disabled{opacity:.6}
+.gain{color:var(--mute);font-size:12.5px}.gempty{padding:24px;text-align:center;color:var(--mute)}
+.gbar{display:flex;align-items:center;gap:10px;margin:8px 12px 4px;background:#1daa61;color:#fff;border-radius:14px;padding:11px 14px;width:calc(100% - 24px);text-align:left}
+.gbm{flex:1;min-width:0}.gbm b{display:block;font-size:14.5px}.gbm small{display:block;font-size:12.5px;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gbj{background:#fff;color:#1a8f54;border-radius:999px;padding:7px 15px;font-weight:700;font-size:13.5px}
+.gdot{width:8px;height:8px;border-radius:50%;background:#fff;animation:blink 1.2s infinite;flex:none}
 </style>
 </head>
 <body>

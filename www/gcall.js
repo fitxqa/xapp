@@ -10,7 +10,8 @@
 const GV_MAX_VIDEO = 4, GV_MAX_VOICE = 8;
 let G = null;              // the group call in progress (one at a time)
 let gInc = null;           // incoming group call being shown
-const dismissed = new Set();
+const dismissed = new Set(), dismissedAt = {};
+const _dAdd = dismissed.add.bind(dismissed); dismissed.add = id => { dismissedAt[id] = Date.now(); return _dAdd(id); };
 const fs = () => firebase.firestore();
 const CALLS = () => fs().collection("calls");
 const meId = () => S.me && S.me.uid;
@@ -26,7 +27,7 @@ async function startGroupCall(gid, video){
   if((g.members||[]).length>max) toast(`Group ${video?"video":"voice"} calls connect up to ${max} people. The first ${max} to join will be in the call.`);
   let local; try{ local=await getMedia(!!video); }catch(e){ return micHelp(e); }
   const ref=CALLS().doc();
-  const doc={group:true, chat:gid, caller:meId(), members:g.members||[], liveMembers:g.members||[], joined:[meId()], video:!!video, status:"ringing", createdAt:Date.now(), relay:PREFS.relay||"auto"};
+  const doc={group:true, chat:gid, title:g.name||"Group", caller:meId(), members:g.members||[], liveMembers:g.members||[], joined:[meId()], video:!!video, status:"ringing", createdAt:Date.now(), relay:PREFS.relay||"auto"};
   try{ await ref.set(doc); }catch(e){ local.getTracks().forEach(t=>t.stop()); return toast("Couldn't start the call. Check your connection."); }
   api.push("gcall",{id:ref.id, to:gid});
   setTimeout(()=>{ if(G&&G.id===ref.id&&G.peers.size===0&&!G.closed) api.push("gcall",{id:ref.id, to:gid}); }, 8000);   // ring again if nobody has joined yet
@@ -43,6 +44,7 @@ async function joinGroupCall(c){
 }
 async function enter(id, doc, local, isCaller){
   const cf = await cfIce();
+  if(api.wantUsers) api.wantUsers(doc.members||[]);
   G={id, doc, local, isCaller, video:!!doc.video, peers:new Map(), subs:[], muted:false, camOff:false, speaker:true, startedAt:Date.now(), closed:false, cf, relay:doc.relay||"auto"};
   drawCall();
   nat("AudioRoute","set",{active:true, route:"auto", preferSpeaker:true});
@@ -68,6 +70,7 @@ async function enter(id, doc, local, isCaller){
 }
 async function leave(why){
   if(!G||G.closed) return; const g=G; g.closed=true; G=null;
+  dismissed.add(g.id);   // don't ring me again for this call; I can still tap Join to go back in
   clearInterval(g.tick); clearTimeout(g.noAnswerT);
   g.subs.forEach(u=>{ try{u();}catch(e){} });
   g.peers.forEach((p,uid)=>{ try{ p.pc.close(); }catch(e){} });
@@ -119,7 +122,7 @@ function speaking(){
 }
 
 /* ---------- screens ---------- */
-function groupName(){ const g=G&&groupOf(G.doc.chat); return (g&&g.name)||"Group call"; }
+function groupName(){ const g=G&&groupOf(G.doc.chat); return (g&&g.name)||(G&&G.doc.title)||"Group call"; }
 function drawCall(){
   let el=$("#gcall"); if(!el){ el=document.createElement("div"); el.id="gcall"; document.body.appendChild(el); }
   el.className="gcall"+(G.video?" gvid":"");
@@ -129,14 +132,14 @@ function drawCall(){
       <button class="gb ${G.speaker?"on":""}" id="gSpk" aria-label="Speaker">${ico("speaker")}</button>
       ${G.video?`<button class="gb on" id="gCam" aria-label="Camera">${ico("video")}</button>`:""}
       <button class="gb" id="gMute" aria-label="Mute">${ico("mic")}</button>
-      ${G.isCaller?`<button class="gb" id="gRing" aria-label="Ring the others again">${ico("users")}</button>`:""}
+      <button class="gb add" id="gAdd" aria-label="Add people">${ico("plus")}</button>
       <button class="gb end" id="gEnd" aria-label="Leave call">${ico("phone")}</button>
     </div>`;
   $("#gEnd").onclick=()=>leave("hangup");
   $("#gMute").onclick=()=>{ G.muted=!G.muted; G.local.getAudioTracks().forEach(t=>t.enabled=!G.muted); $("#gMute").classList.toggle("on",G.muted); $("#gMute").innerHTML=ico(G.muted?"micoff":"mic"); drawTiles(); };
   $("#gSpk").onclick=()=>{ G.speaker=!G.speaker; nat("AudioRoute","set",{active:true, route:G.speaker?"speaker":"earpiece", preferSpeaker:G.speaker}); $("#gSpk").classList.toggle("on",G.speaker); };
   if($("#gCam")) $("#gCam").onclick=()=>{ G.camOff=!G.camOff; G.local.getVideoTracks().forEach(t=>t.enabled=!G.camOff); $("#gCam").classList.toggle("on",!G.camOff); $("#gCam").innerHTML=ico(G.camOff?"videooff":"video"); drawTiles(); };
-  if($("#gRing")) $("#gRing").onclick=()=>{ api.push("gcall",{id:G.id, to:G.doc.chat}); toast("Ringing the others again"); };
+  $("#gAdd").onclick=openAdd;
   drawTiles();
 }
 function drawTiles(){
@@ -173,10 +176,44 @@ function drawTiles(){
   }
 }
 
+/* ---------- add people during the call ---------- */
+function openAdd(){
+  if(!G) return; const me=meId(), max=G.video?GV_MAX_VIDEO:GV_MAX_VOICE;
+  const joined=G.doc.joined||[], members=G.doc.members||[];
+  const full=joined.length>=max;
+  const inGroup=members.filter(u=>u!==me);
+  const others=myContacts().map(u=>u.uid).filter(u=>!members.includes(u));
+  let el=$("#gadd"); if(!el){ el=document.createElement("div"); el.id="gadd"; document.body.appendChild(el); }
+  const nm=u=>(S.users[u]||{}).name||"Member";
+  const row=(u,act)=>{ const inC=joined.includes(u), dec=G.doc["declined_"+u];
+    return `<div class="gar">${avatar(S.users[u]||{uid:u,name:nm(u)})}<div class="gam"><b>${esc(nm(u))}</b><small>${inC?"In the call":dec?"Declined":act==="ring"?"Not in the call":"@"+esc((S.users[u]||{}).username||"")}</small></div>
+      ${inC?`<span class="gain">In the call</span>`:full?`<span class="gain">Call is full</span>`:`<button class="gpill ${act}" data-${act}="${esc(u)}">${act==="ring"?(dec?"Ring again":"Ring"):"Add"}</button>`}</div>`; };
+  el.className="gadd";
+  el.innerHTML=`<div class="gadd-bg" data-x></div><div class="gadd-card"><div class="grip"></div><div class="gadd-h">Add to call${full?` <small>· full (${max} people)</small>`:""}</div>
+    <input class="gadd-q" id="gaddQ" placeholder="Search contacts">
+    <div class="gadd-list" id="gaddL"></div></div>`;
+  const draw=(q="")=>{ const f=q.toLowerCase(), m=u=>!f||nm(u).toLowerCase().includes(f);
+    $("#gaddL").innerHTML=(inGroup.filter(m).length?`<div class="gsec">In this group</div>`+inGroup.filter(m).map(u=>row(u,"ring")).join(""):"")
+      +(others.filter(m).length?`<div class="gsec">Other contacts</div>`+others.filter(m).map(u=>row(u,"addp")).join(""):"")||`<div class="gempty">No contacts</div>`; };
+  draw(); $("#gaddQ").oninput=e=>draw(e.target.value);
+  el.onclick=async e=>{ if(e.target.closest("[data-x]")) return el.remove();
+    const r=e.target.closest("[data-ring]"), a=e.target.closest("[data-addp]"); if(!r&&!a) return;
+    const u=(r||a).dataset.ring||(r||a).dataset.addp; (r||a).disabled=true; (r||a).textContent="Ringing…";
+    try{
+      if(a){ await CALLS().doc(G.id).update({members:FV().arrayUnion(u), liveMembers:FV().arrayUnion(u), ["declined_"+u]:FV().delete()}); G.doc.members=[...new Set([...(G.doc.members||[]),u])]; }
+      else if(G.doc["declined_"+u]) await CALLS().doc(G.id).update({["declined_"+u]:FV().delete()});
+      await CALLS().doc(G.id).update({["ring_"+u]:Date.now()}).catch(()=>{});
+      const res=await api.push("gcall",{id:G.id, to:G.doc.chat, only:[u]});
+      toast(res&&res.ok===false&&res.error?"Couldn't ring "+nm(u)+": "+res.error:"Ringing "+nm(u));
+    }catch(err){ toast("Couldn't add "+nm(u)); }
+    setTimeout(()=>{ if($("#gadd")) openAdd(); }, 600); };
+}
+
 /* ---------- incoming group call ---------- */
 function showIncoming(c){
   if(G||gInc&&gInc.id===c.id) return; gInc=c;
-  const g=groupOf(c.chat)||{name:"Group"}, caller=(S.users[c.caller]||{}).name||"Someone";
+  if(api.wantUsers) api.wantUsers(c.members||[]);
+  const g=groupOf(c.chat)||{name:c.title||"Group call"}, caller=(S.users[c.caller]||{}).name||"Someone";
   const inCall=(c.joined||[]).filter(u=>u!==meId());
   let el=$("#gcin"); if(!el){ el=document.createElement("div"); el.id="gcin"; document.body.appendChild(el); }
   el.className="gcin";
@@ -185,7 +222,7 @@ function showIncoming(c){
       <small class="gcin-sub">${esc(inCall.map(u=>(S.users[u]||{}).name).filter(Boolean).slice(0,2).join(", "))}${inCall.length>2?` and ${inCall.length-2} other${inCall.length>3?"s":""}`:""}${inCall.length?" in the call":""}</small></div>
     <div class="gcin-btns"><div><button class="gb end big" id="gDecl" aria-label="Decline">${ico("phone")}</button>Decline</div>
       <div><button class="gb join big" id="gJoin" aria-label="Join">${ico(c.video?"video":"phone")}</button>Join</div></div>`;
-  $("#gDecl").onclick=()=>{ dismissed.add(c.id); hideIncoming(); stopTone(); };
+  $("#gDecl").onclick=()=>{ dismissed.add(c.id); hideIncoming(); stopTone(); CALLS().doc(c.id).update({["declined_"+meId()]:Date.now()}).catch(()=>{}); };
   $("#gJoin").onclick=()=>joinGroupCall(c);
   ringSound("incoming",{id:c.id, name:caller+" · "+(g.name||"Group"), video:!!c.video});
   clearTimeout(showIncoming.t); showIncoming.t=setTimeout(()=>{ if(gInc&&gInc.id===c.id){ hideIncoming(); stopTone(); } }, 45000);
@@ -200,10 +237,13 @@ function watchLive(){
   unsubLive=CALLS().where("liveMembers","array-contains",meId()).onSnapshot(s=>{
     const live=s.docs.map(d=>({id:d.id,...d.data()})).filter(c=>c.group&&c.status!=="ended");
     if(gInc && !live.some(c=>c.id===gInc.id)){ hideIncoming(); stopTone(); }
-    live.forEach(c=>{ if(c.caller===meId()||(c.joined||[]).includes(meId())||dismissed.has(c.id)||G) return;
+    live.forEach(c=>{ if((c.joined||[]).includes(meId())||G) return;
+      const rungAt=c["ring_"+meId()]||0; if(dismissed.has(c.id) && rungAt>(dismissedAt[c.id]||0)) dismissed.delete(c.id);   // rung again after I left / declined
+      if(c.caller===meId()&&!rungAt||dismissed.has(c.id)) return;
       if(Date.now()-(c.createdAt||0) > 10*60000) return;
       if(!gInc){ CALLS().doc(c.id).update({["ringingAt_"+meId()]:Date.now()}).catch(()=>{}); showIncoming(c); } });
     S.liveGroupCalls=live; if(S.peer&&isGroup(S.peer)) renderChatHead();
+    if(S.tab==="chats" && typeof renderList==="function") renderList(true);
   }, e=>{ console.warn("group calls", e); setTimeout(()=>{ if(meId()) watchLive(); }, 2000); });   // reconnect if Firestore drops it
 }
 
@@ -217,5 +257,5 @@ async function groupCallAction(a){
     return true; }catch(e){ return false; }
 }
 
-window.XG={ startGroupCall, joinGroupCall, leave:()=>leave("hangup"), watchLive, groupCallAction, active:()=>G, live:()=>S.liveGroupCalls||[] };
+window.XG={ openAdd, startGroupCall, joinGroupCall, leave:()=>leave("hangup"), watchLive, groupCallAction, active:()=>G, live:()=>S.liveGroupCalls||[] };
 })();

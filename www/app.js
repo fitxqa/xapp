@@ -566,11 +566,16 @@ function renderList(force){
       if(q && !(u.name||"").toLowerCase().includes(q) && !(c.last||"").toLowerCase().includes(q)) return "";
       const n=c["unread_"+S.me.uid]||0;
       const tick=g?(c.lastFrom&&c.lastFrom!==S.me.uid&&!/^(created|added|removed|left|changed|made)/.test(c.last||"")?`<b style="font-weight:500">${esc(nameOf(c.lastFrom))}:</b> `:""):c.lastFrom===S.me.uid?ico("checks"):"";
+      const liveHere=g&&window.XG&&XG.live().some(x=>x.chat===c.id&&(x.joined||[]).length);
       if(g) return `<button class="row" data-open="${esc(c.id)}">${groupAvatar(c)}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
-        <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`;
+        <div class="sub"><span>${liveHere?`<b style="color:#1daa61;font-weight:600">📞 Group call in progress</b>`:tick+esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`;
       return `<button class="row" data-open="${esc(u.uid)}">${avatar(u,"",isOnline(u))}<div class="mid"><div class="top"><span class="name">${esc(u.name)}</span><span class="time ${n?"hot":""}">${listTime(c.lastAt)}</span></div>
         <div class="sub"><span>${tick}${esc(c.last)}</span>${n?`<span class="badge">${n}</span>`:""}</div></div></button>`; }).join("");
-    L.innerHTML = bgBanner + chips + (rows || `<div class="empty">${F==="unread"?"No unread chats":F==="groups"?"No groups yet.<br>Tap the orange button → New group.":"No chats yet.<br>Tap the orange button to start a chat."}</div>`);
+    // a group call is going on that I'm not in (left it, or didn't answer): green bar to join
+    const liveC=(window.XG&&!XG.active()?XG.live():[]).filter(c=>(c.joined||[]).length&&!(c.joined||[]).includes(S.me.uid));
+    const joinBars=liveC.map(c=>{ const g=groupOf(c.chat), who=(c.joined||[]).map(u=>(S.users[u]||{}).name).filter(Boolean);
+      return `<button class="gbar" data-gjoin="${esc(c.id)}"><span class="gdot"></span><span class="gbm"><b>${esc((g&&g.name)||c.title||"Group")} · group ${c.video?"video ":""}call</b><small>${esc(who.slice(0,2).join(", "))}${who.length>2?` and ${who.length-2} other${who.length>3?"s":""}`:""} ${who.length===1?"is":"are"} in the call</small></span><span class="gbj">Join</span></button>`; }).join("");
+    L.innerHTML = bgBanner + joinBars + chips + (rows || `<div class="empty">${F==="unread"?"No unread chats":F==="groups"?"No groups yet.<br>Tap the orange button → New group.":"No chats yet.<br>Tap the orange button to start a chat."}</div>`);
   }
   if(S.tab==="updates"){
     const mine=S.statuses.filter(s=>s.uid===S.me.uid&&s.expiresAt>Date.now());
@@ -710,6 +715,7 @@ function openSettingsPage(page){
 const APP_VERSION="1.0";
 $("#list").onclick=e=>{
   const fl=e.target.closest("[data-filter]"); if(fl){ S.chatFilter=fl.dataset.filter; return renderList(true); }
+  const gj=e.target.closest("[data-gjoin]"); if(gj){ const c=XG.live().find(x=>x.id===gj.dataset.gjoin); if(c) XG.joinGroupCall(c); return; }
   if(e.target.closest("[data-add]")) return openAddContact();
   const pg=e.target.closest("[data-page]"); if(pg){ const k=pg.dataset.page;
     if(k==="contacts") return setTab("contacts"); if(k==="admin"){ location.href="admin.html"; return; }
